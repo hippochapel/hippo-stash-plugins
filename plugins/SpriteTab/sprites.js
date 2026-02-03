@@ -1,6 +1,6 @@
 (function () {
     'use strict';
-    
+
     // --- CONFIGURATION ---
     const STORAGE_KEY = 'stash_plugin_sprite_settings';
     const SPRITE_WIDTH_GUESS = 160;
@@ -24,7 +24,7 @@
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
         const s = Math.floor(seconds % 60);
-        return h > 0 
+        return h > 0
             ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
             : `${m}:${s.toString().padStart(2, '0')}`;
     }
@@ -74,18 +74,18 @@
     function renderControls(container, updateCallback) {
         const settings = getSettings();
         const bar = document.createElement('div');
-        
+
         // Sticky positioning to keep controls visible
         bar.style.cssText = `
-            padding: 10px; 
-            display: flex; 
-            flex-wrap: wrap; 
-            align-items: center; 
-            gap: 15px; 
-            background: rgba(30, 30, 30, 0.95); 
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            background: rgba(30, 30, 30, 0.95);
             border-bottom: 1px solid #444;
-            margin-bottom: 15px; 
-            border-radius: 0 0 5px 5px; 
+            margin-bottom: 15px;
+            border-radius: 0 0 5px 5px;
             font-size: 14px;
             position: sticky;
             top: 0;
@@ -96,13 +96,24 @@
         const colWrapper = document.createElement('div');
         colWrapper.style.cssText = 'display: flex; align-items: center; gap: 5px; flex-grow: 1;';
         colWrapper.innerHTML = `<span>Size:</span>`;
+        
         const slider = document.createElement('input');
-        slider.type = 'range'; slider.min = '1'; slider.max = '12'; slider.value = settings.cols;
+        slider.type = 'range'; 
+        slider.min = '1'; 
+        slider.max = '12'; 
+        
+        slider.value = 13 - settings.cols; 
+        
         slider.style.cssText = 'cursor: pointer; flex-grow: 1; max-width: 200px;';
+        
         slider.oninput = (e) => {
-            saveSettings({ cols: parseInt(e.target.value) });
+            const newVal = parseInt(e.target.value);
+            const newCols = 13 - newVal;
+            
+            saveSettings({ cols: newCols });
             updateCallback('cols');
         };
+        
         colWrapper.appendChild(slider);
         bar.appendChild(colWrapper);
 
@@ -130,13 +141,10 @@
         if (!sceneData?.paths?.sprite) return null;
 
         const mainContainer = document.createElement('div');
-        // Removed fixed height constraints
         mainContainer.style.cssText = "width: 100%; display: flex; flex-direction: column;";
 
         const scrollArea = document.createElement('div');
         scrollArea.className = 'sprite-scroll-area';
-        // Removed max-height and overflow-y: auto.
-        // Added padding-bottom to ensure the last row isn't cut off by page footers.
         scrollArea.style.cssText = 'position: relative; width: 100%; padding-bottom: 50px;';
 
         const grid = document.createElement('div');
@@ -180,14 +188,14 @@
                 cell.style.cssText = `width: 100%; aspect-ratio: 16/9; background-image: url('${sceneData.paths.sprite}'); background-repeat: no-repeat; cursor: pointer; position: relative;`;
                 cell.style.border = getSettings().compact ? 'none' : '1px solid #333';
                 cell.style.borderRadius = getSettings().compact ? '0' : '4px';
-                
+
                 cell.style.backgroundSize = `${sourceCols * 100}%`;
                 const colIdx = i % sourceCols;
                 const rowIdx = Math.floor(i / sourceCols);
                 cell.style.backgroundPosition = `${(colIdx / (sourceCols - 1)) * 100}% ${(rowIdx / (sourceRows - 1)) * 100}%`;
 
                 const time = (i / totalSpritesCount) * sceneData.duration;
-                
+
                 if (getSettings().showTime) {
                     const ts = document.createElement('span');
                     ts.className = 'sprite-timestamp';
@@ -203,6 +211,7 @@
 
                 cell.onmouseenter = () => { if(!getSettings().compact) cell.style.borderColor = '#fff'; };
                 cell.onmouseleave = () => { if(!getSettings().compact) cell.style.border = '1px solid #333'; };
+
 
                 cells.push({ element: cell, time: time });
                 grid.appendChild(cell);
@@ -230,9 +239,19 @@
                     cells[currentActiveIndex].element.style.boxShadow = 'none';
                     cells[currentActiveIndex].element.style.zIndex = '0';
                 }
+                
                 if (cells[safeIdx]) {
                     cells[safeIdx].element.style.boxShadow = 'inset 0 0 0 2px #00BFFF';
                     cells[safeIdx].element.style.zIndex = '1';
+                    
+                    if (getSettings().autoScroll) {
+                        cells[safeIdx].element.scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'center',
+                            inline: 'nearest'
+                        });
+                    }
+                    
                     currentActiveIndex = safeIdx;
                 }
             }
@@ -242,13 +261,7 @@
             const player = getPlayer();
             if (player) {
                 player.addEventListener('timeupdate', update);
-                if (getSettings().autoScroll) {
-                    update();
-                    if (currentActiveIndex >= 0 && cells[currentActiveIndex]) {
-                        // For page scrolling, we use 'center' to avoid jumping the whole page too aggressively
-                        cells[currentActiveIndex].element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                }
+                update();
                 clearInterval(poller);
             }
         }, 1000);
@@ -274,7 +287,7 @@
 
         const tabPane = document.createElement('div');
         tabPane.id = 'sprites-panel';
-        tabPane.className = 'tab-pane'; 
+        tabPane.className = 'tab-pane';
         tabContent.appendChild(tabPane);
 
         const data = await getSceneData(sceneId);
@@ -289,8 +302,8 @@
 
             if (link.id === 'tab-sprites-nav') {
                 e.preventDefault();
-                e.stopPropagation(); 
-                
+                e.stopPropagation();
+
                 navTabs.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
                 link.classList.add('active');
 
@@ -304,7 +317,7 @@
             } else {
                 const myTab = document.getElementById('tab-sprites-nav');
                 if (myTab) myTab.classList.remove('active');
-                
+
                 tabContent.classList.remove('stash-plugin-sprites-active');
             }
         }, { capture: true });
