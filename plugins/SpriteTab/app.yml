@@ -1,0 +1,6 @@
+name: Sprite Tab
+description: Adds a tab to the scene page displaying the full sprite sheet.
+version: 1.0
+ui:
+  javascript:
+    - sprites.js
