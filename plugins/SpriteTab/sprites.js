@@ -49,7 +49,7 @@
 
     // --- HELPERS ---
     function getPlayer() {
-        return document.querySelector('video.vjs-tech') || document.querySelector('video');
+        return document.getElementById("VideoJsPlayer").player;
     }
 
     // --- INJECT CUSTOM STYLES ---
@@ -377,7 +377,7 @@
 
                 const seekToTime = () => {
                     const p = getPlayer();
-                    if (p) { p.currentTime = time; p.play(); }
+                    if (p) { p.currentTime(time); p.play(); }
                 };
 
                 // --- CLICK HANDLER (desktop) ---
@@ -508,7 +508,7 @@
                         seekToTime();
                         if (pluginSettings.auto_scroll && isMobileLayout()) {
                             const player = getPlayer();
-                            if (player) player.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            if (player) player.el_.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
                     }
                     touchStartPos = null;
@@ -550,7 +550,7 @@
             const player = getPlayer();
             if (!player) return;
 
-            const safeIdx = getActiveSpriteIndex(player.currentTime, total, duration);
+            const safeIdx = getActiveSpriteIndex(player.currentTime(), total, duration);
 
             if (safeIdx !== currentActiveIndex) {
                 if (currentActiveIndex >= 0 && cells[currentActiveIndex]) {
@@ -578,7 +578,7 @@
         const poller = setInterval(() => {
             const player = getPlayer();
             if (player) {
-                player.addEventListener('timeupdate', update);
+                player.on('timeupdate', update);
                 update();
                 clearInterval(poller);
             }
