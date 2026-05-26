@@ -233,7 +233,10 @@
 
         const grid = document.createElement('div');
         grid.id = 'stash-sprite-grid';
+        grid.setAttribute('role', 'grid');
+        grid.setAttribute('aria-label', 'Scene sprite timeline');
         const cols = pluginSettings.grid_columns || getSettings().cols;
+        grid.setAttribute('aria-colcount', String(cols));
         grid.style.cssText = `display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: ${pluginSettings.compact_view ? '0' : '5px'}; padding-right: 5px;`;
 
         const cells = [];
@@ -247,6 +250,7 @@
 
             if (key === 'cols') {
                 currentGrid.style.gridTemplateColumns = `repeat(${ns.cols}, 1fr)`;
+                currentGrid.setAttribute('aria-colcount', String(ns.cols));
             }
         };
 
@@ -301,9 +305,24 @@
             // Shared across all cells so any touch blocks synthetic mouse events on all cells
             let lastTouchTime = 0;
 
+            const displayCols = pluginSettings.grid_columns || getSettings().cols;
+            grid.setAttribute('aria-rowcount', String(Math.ceil(totalSpritesCount / displayCols)));
+
+            const moveFocus = (toIndex) => {
+                const clamped = Math.max(0, Math.min(totalSpritesCount - 1, toIndex));
+                cells.forEach((c, idx) => { c.element.tabIndex = (idx === clamped) ? 0 : -1; });
+                cells[clamped].element.focus();
+            };
+
             for (let i = 0; i < totalSpritesCount; i++) {
+                const time = (i / totalSpritesCount) * sceneData.duration;
+                const timeStr = formatTime(time);
+
                 const cell = document.createElement('div');
                 cell.className = 'sprite-cell';
+                cell.setAttribute('role', 'button');
+                cell.tabIndex = (i === 0) ? 0 : -1;
+                cell.setAttribute('aria-label', `Seek to ${timeStr}`);
                 cell.style.cssText = `width: 100%; aspect-ratio: 16/9; background-image: url('${sceneData.paths.sprite}'); background-repeat: no-repeat; cursor: pointer; position: relative;`;
                 cell.style.border = pluginSettings.compact_view ? 'none' : '1px solid #333';
                 cell.style.borderRadius = pluginSettings.compact_view ? '0' : '4px';
@@ -314,9 +333,6 @@
                 const rowIdx = Math.floor(i / sourceCols);
                 const bgPos = `${(colIdx / (sourceCols - 1)) * 100}% ${(rowIdx / (sourceRows - 1)) * 100}%`;
                 cell.style.backgroundPosition = bgPos;
-
-                const time = (i / totalSpritesCount) * sceneData.duration;
-                const timeStr = formatTime(time);
 
                 if (pluginSettings.show_timestamps) {
                     const ts = document.createElement('span');
@@ -380,16 +396,46 @@
                     if (p) { p.currentTime = time; p.play(); }
                 };
 
-                // --- CLICK HANDLER (desktop) ---
-                cell.onclick = (e) => {
-                    // Ignore clicks that are synthetic from touch events
-                    if (Date.now() - lastTouchTime < 500) return;
+                const activateCell = () => {
                     const ev = new CustomEvent('spritetab:cellactivate', {
                         bubbles: true, cancelable: true,
                         detail: { time, sceneId: currentSceneId }
                     });
                     if (!cell.dispatchEvent(ev)) return;
                     seekToTime();
+                    const player = getPlayer();
+                    if (player) {
+                        if (!player.hasAttribute('tabindex')) player.setAttribute('tabindex', '-1');
+                        player.focus({ preventScroll: true });
+                    }
+                };
+
+                // --- CLICK HANDLER (desktop) ---
+                cell.onclick = (e) => {
+                    // Ignore clicks that are synthetic from touch events
+                    if (Date.now() - lastTouchTime < 500) return;
+                    activateCell();
+                };
+
+                // --- KEYBOARD HANDLER (Tab navigation + Vimium "f") ---
+                cell.onkeydown = (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        activateCell();
+                        return;
+                    }
+                    const liveCols = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+                    let nextIdx = null;
+                    if (e.key === 'ArrowRight')      nextIdx = i + 1;
+                    else if (e.key === 'ArrowLeft')  nextIdx = i - 1;
+                    else if (e.key === 'ArrowDown')  nextIdx = i + liveCols;
+                    else if (e.key === 'ArrowUp')    nextIdx = i - liveCols;
+                    else if (e.key === 'Home')       nextIdx = 0;
+                    else if (e.key === 'End')        nextIdx = totalSpritesCount - 1;
+                    if (nextIdx !== null) {
+                        e.preventDefault();
+                        moveFocus(nextIdx);
+                    }
                 };
 
                 // --- HOVER LOGIC (desktop) ---

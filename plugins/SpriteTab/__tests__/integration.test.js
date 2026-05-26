@@ -718,6 +718,350 @@ describe('GalleryMode integration handshake', () => {
     });
 });
 
+describe('Keyboard activation and link-hint discoverability', () => {
+    // Sprite cells expose role="button", tabindex=0, and an aria-label so that
+    // Vimium's "f" link-hint feature finds them and screen-reader / Tab users
+    // can navigate them. Enter and Space activate the same code path as click.
+
+    let cell;
+    let mockSeek;
+    let lastTouchTime;
+
+    // Mirrors the wiring inside sprites.js so the tests exercise the same
+    // logic without standing up the full plugin.
+    const wireCell = (time, sceneId) => {
+        const activateCell = () => {
+            const ev = new CustomEvent('spritetab:cellactivate', {
+                bubbles: true, cancelable: true,
+                detail: { time, sceneId }
+            });
+            if (!cell.dispatchEvent(ev)) return;
+            mockSeek();
+        };
+
+        cell.onclick = () => {
+            if (Date.now() - lastTouchTime < 500) return;
+            activateCell();
+        };
+
+        cell.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activateCell();
+            }
+        };
+    };
+
+    beforeEach(() => {
+        document.body.innerHTML = '';
+        cell = document.createElement('div');
+        cell.className = 'sprite-cell';
+        cell.setAttribute('role', 'button');
+        cell.tabIndex = 0;
+        cell.setAttribute('aria-label', 'Seek to 1:23');
+        document.body.appendChild(cell);
+        mockSeek = jest.fn();
+        lastTouchTime = 0;
+    });
+
+    it('exposes role="button" so Vimium "f" detects the cell', () => {
+        expect(cell.getAttribute('role')).toBe('button');
+    });
+
+    it('exposes tabindex=0 so Tab navigation reaches the cell', () => {
+        expect(cell.tabIndex).toBe(0);
+    });
+
+    it('exposes an aria-label describing the seek target', () => {
+        expect(cell.getAttribute('aria-label')).toMatch(/^Seek to /);
+    });
+
+    it('activates seek on Enter key', () => {
+        wireCell(42, '7');
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        expect(mockSeek).toHaveBeenCalled();
+    });
+
+    it('activates seek on Space key and prevents page scroll', () => {
+        wireCell(42, '7');
+        const event = new KeyboardEvent('keydown', { key: ' ', cancelable: true });
+        cell.dispatchEvent(event);
+        expect(mockSeek).toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('does not activate seek on unrelated keys', () => {
+        wireCell(42, '7');
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+        expect(mockSeek).not.toHaveBeenCalled();
+    });
+
+    it('dispatches cellactivate from keyboard activation so listeners can cancel', () => {
+        document.addEventListener('spritetab:cellactivate', (e) => e.preventDefault(), { once: true });
+        wireCell(42, '7');
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        expect(mockSeek).not.toHaveBeenCalled();
+    });
+
+    it('preserves the touch-event guard on click after refactor', () => {
+        wireCell(42, '7');
+        lastTouchTime = Date.now();
+        cell.click();
+        expect(mockSeek).not.toHaveBeenCalled();
+    });
+});
+
+describe('Roving tabindex and arrow-key navigation', () => {
+    // Only one cell at a time is in the page tab order (tabindex=0); the rest
+    // are programmatically focusable (tabindex=-1). Arrow / Home / End move
+    // focus within the grid and roll the tabindex=0 marker.
+
+    const COLS = 4;
+    const TOTAL = 12; // 3 rows × 4 cols
+
+    let cells;
+
+    const buildGrid = () => {
+        const grid = document.createElement('div');
+        grid.style.gridTemplateColumns = Array(COLS).fill('1fr').join(' ');
+        document.body.appendChild(grid);
+
+        cells = [];
+        for (let i = 0; i < TOTAL; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'sprite-cell';
+            cell.tabIndex = (i === 0) ? 0 : -1;
+            grid.appendChild(cell);
+            cells.push({ element: cell });
+        }
+
+        const moveFocus = (toIndex) => {
+            const clamped = Math.max(0, Math.min(TOTAL - 1, toIndex));
+            cells.forEach((c, idx) => { c.element.tabIndex = (idx === clamped) ? 0 : -1; });
+            cells[clamped].element.focus();
+        };
+
+        cells.forEach((c, i) => {
+            c.element.onkeydown = (e) => {
+                const liveCols = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+                let nextIdx = null;
+                if (e.key === 'ArrowRight')      nextIdx = i + 1;
+                else if (e.key === 'ArrowLeft')  nextIdx = i - 1;
+                else if (e.key === 'ArrowDown')  nextIdx = i + liveCols;
+                else if (e.key === 'ArrowUp')    nextIdx = i - liveCols;
+                else if (e.key === 'Home')       nextIdx = 0;
+                else if (e.key === 'End')        nextIdx = TOTAL - 1;
+                if (nextIdx !== null) {
+                    e.preventDefault();
+                    moveFocus(nextIdx);
+                }
+            };
+        });
+
+        return { grid, moveFocus };
+    };
+
+    beforeEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    it('initially gives cell 0 tabindex=0 and all others tabindex=-1', () => {
+        buildGrid();
+        expect(cells[0].element.tabIndex).toBe(0);
+        cells.slice(1).forEach(c => expect(c.element.tabIndex).toBe(-1));
+    });
+
+    it('moveFocus rolls the tabindex=0 marker to the target cell', () => {
+        const { moveFocus } = buildGrid();
+        moveFocus(5);
+        expect(cells[5].element.tabIndex).toBe(0);
+        expect(cells[0].element.tabIndex).toBe(-1);
+        cells.filter((_, idx) => idx !== 5).forEach(c => expect(c.element.tabIndex).toBe(-1));
+    });
+
+    it('ArrowRight moves focus to the next cell', () => {
+        buildGrid();
+        cells[2].element.focus();
+        cells[2].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        expect(cells[3].element.tabIndex).toBe(0);
+        expect(document.activeElement).toBe(cells[3].element);
+    });
+
+    it('ArrowLeft on cell 0 clamps and stays on cell 0', () => {
+        buildGrid();
+        cells[0].element.focus();
+        cells[0].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+        expect(cells[0].element.tabIndex).toBe(0);
+        expect(document.activeElement).toBe(cells[0].element);
+    });
+
+    it('ArrowDown moves focus by one column count', () => {
+        buildGrid();
+        cells[1].element.focus();
+        cells[1].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        expect(cells[1 + COLS].element.tabIndex).toBe(0);
+        expect(document.activeElement).toBe(cells[1 + COLS].element);
+    });
+
+    it('ArrowUp on top row clamps to row 0', () => {
+        buildGrid();
+        cells[2].element.focus();
+        cells[2].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+        expect(document.activeElement).toBe(cells[0].element);
+    });
+
+    it('Home moves focus to cell 0', () => {
+        buildGrid();
+        cells[7].element.focus();
+        cells[7].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
+        expect(document.activeElement).toBe(cells[0].element);
+    });
+
+    it('End moves focus to the last cell', () => {
+        buildGrid();
+        cells[3].element.focus();
+        cells[3].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }));
+        expect(document.activeElement).toBe(cells[TOTAL - 1].element);
+    });
+
+    it('unrelated keys do not move focus', () => {
+        const { moveFocus } = buildGrid();
+        moveFocus(5);
+        ['PageDown', 'Tab', 'a', 'Escape'].forEach(key => {
+            cells[5].element.dispatchEvent(new KeyboardEvent('keydown', { key }));
+        });
+        expect(document.activeElement).toBe(cells[5].element);
+        expect(cells[5].element.tabIndex).toBe(0);
+    });
+
+    it('reads column count from live grid style so slider resize stays correct', () => {
+        const { grid } = buildGrid();
+        grid.style.gridTemplateColumns = '1fr 1fr'; // user resized to 2 columns
+        cells[0].element.focus();
+        cells[0].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        expect(document.activeElement).toBe(cells[2].element);
+    });
+
+    it('ArrowDown past the bottom row clamps to the last cell', () => {
+        buildGrid();
+        cells[10].element.focus();
+        cells[10].element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        expect(document.activeElement).toBe(cells[TOTAL - 1].element);
+    });
+});
+
+describe('Player refocus on activation', () => {
+    // activateCell() calls getPlayer().focus({ preventScroll: true }) after seeking
+    // so the sprite stops trapping Space-bar / leaving a persistent focus ring.
+
+    let cell;
+    let mockSeek;
+    let mockPlayer;
+
+    const wireCell = (time, sceneId, getPlayer) => {
+        const activateCell = () => {
+            const ev = new CustomEvent('spritetab:cellactivate', {
+                bubbles: true, cancelable: true,
+                detail: { time, sceneId }
+            });
+            if (!cell.dispatchEvent(ev)) return;
+            mockSeek();
+            const player = getPlayer();
+            if (player) {
+                if (!player.hasAttribute('tabindex')) player.setAttribute('tabindex', '-1');
+                player.focus({ preventScroll: true });
+            }
+        };
+
+        cell.onclick = () => activateCell();
+        cell.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activateCell();
+            }
+        };
+    };
+
+    beforeEach(() => {
+        document.body.innerHTML = '';
+        cell = document.createElement('div');
+        cell.className = 'sprite-cell';
+        document.body.appendChild(cell);
+
+        mockPlayer = document.createElement('video');
+        mockPlayer.className = 'vjs-tech';
+        mockPlayer.focus = jest.fn();
+        document.body.appendChild(mockPlayer);
+
+        mockSeek = jest.fn();
+    });
+
+    it('focuses the player after click activation', () => {
+        wireCell(42, '7', () => mockPlayer);
+        cell.click();
+        expect(mockSeek).toHaveBeenCalled();
+        expect(mockPlayer.focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
+    it('focuses the player after Enter activation', () => {
+        wireCell(42, '7', () => mockPlayer);
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        expect(mockPlayer.focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
+    it('focuses the player after Space activation', () => {
+        wireCell(42, '7', () => mockPlayer);
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+        expect(mockPlayer.focus).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
+    it('adds tabindex=-1 to the player if it has no tabindex', () => {
+        expect(mockPlayer.hasAttribute('tabindex')).toBe(false);
+        wireCell(42, '7', () => mockPlayer);
+        cell.click();
+        expect(mockPlayer.getAttribute('tabindex')).toBe('-1');
+    });
+
+    it('preserves an existing tabindex on the player', () => {
+        mockPlayer.setAttribute('tabindex', '0');
+        wireCell(42, '7', () => mockPlayer);
+        cell.click();
+        expect(mockPlayer.getAttribute('tabindex')).toBe('0');
+    });
+
+    it('does not focus the player when listener cancels activation', () => {
+        document.addEventListener('spritetab:cellactivate', (e) => e.preventDefault(), { once: true });
+        wireCell(42, '7', () => mockPlayer);
+        cell.click();
+        expect(mockSeek).not.toHaveBeenCalled();
+        expect(mockPlayer.focus).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when the player is missing', () => {
+        wireCell(42, '7', () => null);
+        expect(() => cell.click()).not.toThrow();
+        expect(mockSeek).toHaveBeenCalled();
+    });
+});
+
+describe('Sprite grid container has grid semantics', () => {
+    it('declares role=grid with an aria-label for screen readers', () => {
+        const grid = document.createElement('div');
+        grid.id = 'stash-sprite-grid';
+        grid.setAttribute('role', 'grid');
+        grid.setAttribute('aria-label', 'Scene sprite timeline');
+        grid.setAttribute('aria-colcount', '8');
+        grid.setAttribute('aria-rowcount', '25');
+
+        expect(grid.getAttribute('role')).toBe('grid');
+        expect(grid.getAttribute('aria-label')).toBe('Scene sprite timeline');
+        expect(grid.getAttribute('aria-colcount')).toBe('8');
+        expect(grid.getAttribute('aria-rowcount')).toBe('25');
+    });
+});
+
 describe('GraphQL Mock Integration', () => {
     beforeEach(() => {
         global.fetch = jest.fn();
