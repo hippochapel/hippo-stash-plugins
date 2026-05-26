@@ -406,30 +406,127 @@ describe('CSS Style Application', () => {
 });
 
 describe('Video Player Integration', () => {
+    // Mirrors getPlayer() in sprites.js. The player is the videojs Player
+    // instance (attached as .player on the #VideoJsPlayer element), not the
+    // raw <video>. Player.currentTime() returns the user-facing timeline
+    // even when the backing media is transcoded; <video>.currentTime does not.
+    const getPlayer = () => {
+        const el = document.getElementById('VideoJsPlayer');
+        return el && el.player ? el.player : null;
+    };
+
+    // Mock videojs Player: currentTime is overloaded (getter when called with
+    // no args, setter when called with a number). play/on mirror videojs API;
+    // el() returns the wrapper DOM element used for focus / scrollIntoView.
+    const mountPlayer = (initialTime = 0) => {
+        const wrapper = document.createElement('div');
+        wrapper.id = 'VideoJsPlayer';
+        const elNode = document.createElement('div');
+        elNode.className = 'video-js';
+        wrapper.appendChild(elNode);
+        let t = initialTime;
+        const listeners = {};
+        const player = {
+            currentTime: jest.fn((value) => {
+                if (value === undefined) return t;
+                t = value;
+                return undefined;
+            }),
+            play: jest.fn(),
+            on: jest.fn((event, handler) => {
+                (listeners[event] = listeners[event] || []).push(handler);
+            }),
+            el: jest.fn(() => elNode),
+            _emit: (event) => (listeners[event] || []).forEach(h => h()),
+        };
+        wrapper.player = player;
+        document.body.appendChild(wrapper);
+        return { wrapper, elNode, player };
+    };
+
     beforeEach(() => {
         document.body.innerHTML = '';
     });
 
-    it('should find video element', () => {
-        const video = document.createElement('video');
-        video.className = 'vjs-tech';
-        document.body.appendChild(video);
-
-        const found = document.querySelector('video.vjs-tech') || document.querySelector('video');
-        expect(found).toBe(video);
+    it('returns the videojs Player instance from #VideoJsPlayer.player', () => {
+        const { player } = mountPlayer();
+        expect(getPlayer()).toBe(player);
     });
 
-    it('should fall back to generic video element', () => {
-        const video = document.createElement('video');
-        document.body.appendChild(video);
-
-        const found = document.querySelector('video.vjs-tech') || document.querySelector('video');
-        expect(found).toBe(video);
+    it('returns null when the #VideoJsPlayer element is missing', () => {
+        expect(getPlayer()).toBeNull();
     });
 
-    it('should handle missing video element', () => {
-        const found = document.querySelector('video.vjs-tech') || document.querySelector('video');
-        expect(found).toBeNull();
+    it('returns null when #VideoJsPlayer exists but lacks .player', () => {
+        const el = document.createElement('div');
+        el.id = 'VideoJsPlayer';
+        document.body.appendChild(el);
+        expect(getPlayer()).toBeNull();
+    });
+
+    it('seeks via player.currentTime(time) — the setter form, not raw assignment', () => {
+        const { player } = mountPlayer();
+        const seekToTime = (time) => {
+            const p = getPlayer();
+            if (p) { p.currentTime(time); p.play(); }
+        };
+        seekToTime(42);
+        expect(player.currentTime).toHaveBeenCalledWith(42);
+        expect(player.play).toHaveBeenCalled();
+    });
+
+    it('reads currentTime via the getter (no-arg) call for active-sprite tracking', () => {
+        const { player } = mountPlayer(73);
+        const p = getPlayer();
+        expect(p.currentTime()).toBe(73);
+    });
+
+    it('registers timeupdate via player.on, not addEventListener', () => {
+        const { player } = mountPlayer();
+        const handler = jest.fn();
+        const p = getPlayer();
+        p.on('timeupdate', handler);
+        expect(player.on).toHaveBeenCalledWith('timeupdate', handler);
+        player._emit('timeupdate');
+        expect(handler).toHaveBeenCalled();
+    });
+
+    it('focuses the wrapper element via player.el(), not the player object directly', () => {
+        const { player, elNode } = mountPlayer();
+        const focusSpy = jest.spyOn(elNode, 'focus');
+        const p = getPlayer();
+        const playerEl = p && p.el();
+        if (playerEl) {
+            if (!playerEl.hasAttribute('tabindex')) playerEl.setAttribute('tabindex', '-1');
+            playerEl.focus({ preventScroll: true });
+        }
+        expect(elNode.getAttribute('tabindex')).toBe('-1');
+        expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
+        expect(player.el).toHaveBeenCalled();
+    });
+
+    it('scrolls the wrapper element via player.el() for mobile auto-scroll after tap', () => {
+        const { elNode } = mountPlayer();
+        const scrollSpy = jest.fn();
+        elNode.scrollIntoView = scrollSpy;
+        const p = getPlayer();
+        const playerEl = p && p.el();
+        if (playerEl) playerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    });
+
+    it('does not throw when the player is missing — guards must short-circuit', () => {
+        const seekToTime = (time) => {
+            const p = getPlayer();
+            if (p) { p.currentTime(time); p.play(); }
+        };
+        const scrollPlayer = () => {
+            const p = getPlayer();
+            const playerEl = p && p.el();
+            if (playerEl) playerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        expect(() => seekToTime(10)).not.toThrow();
+        expect(scrollPlayer).not.toThrow();
     });
 });
 

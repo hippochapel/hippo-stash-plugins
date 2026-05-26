@@ -48,8 +48,12 @@
     let currentSceneId = null;
 
     // --- HELPERS ---
+    // Returns the videojs Player instance, not the inner <video> element. The
+    // Player's currentTime() reflects the user-facing timeline even when the
+    // backing media is transcoded; the raw <video>.currentTime does not.
     function getPlayer() {
-        return document.querySelector('video.vjs-tech') || document.querySelector('video');
+        const el = document.getElementById('VideoJsPlayer');
+        return el && el.player ? el.player : null;
     }
 
     // --- INJECT CUSTOM STYLES ---
@@ -393,7 +397,7 @@
 
                 const seekToTime = () => {
                     const p = getPlayer();
-                    if (p) { p.currentTime = time; p.play(); }
+                    if (p) { p.currentTime(time); p.play(); }
                 };
 
                 const activateCell = () => {
@@ -404,9 +408,10 @@
                     if (!cell.dispatchEvent(ev)) return;
                     seekToTime();
                     const player = getPlayer();
-                    if (player) {
-                        if (!player.hasAttribute('tabindex')) player.setAttribute('tabindex', '-1');
-                        player.focus({ preventScroll: true });
+                    const playerEl = player && player.el();
+                    if (playerEl) {
+                        if (!playerEl.hasAttribute('tabindex')) playerEl.setAttribute('tabindex', '-1');
+                        playerEl.focus({ preventScroll: true });
                     }
                 };
 
@@ -554,7 +559,8 @@
                         seekToTime();
                         if (pluginSettings.auto_scroll && isMobileLayout()) {
                             const player = getPlayer();
-                            if (player) player.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            const playerEl = player && player.el();
+                            if (playerEl) playerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
                     }
                     touchStartPos = null;
@@ -596,7 +602,7 @@
             const player = getPlayer();
             if (!player) return;
 
-            const safeIdx = getActiveSpriteIndex(player.currentTime, total, duration);
+            const safeIdx = getActiveSpriteIndex(player.currentTime(), total, duration);
 
             if (safeIdx !== currentActiveIndex) {
                 if (currentActiveIndex >= 0 && cells[currentActiveIndex]) {
@@ -624,7 +630,7 @@
         const poller = setInterval(() => {
             const player = getPlayer();
             if (player) {
-                player.addEventListener('timeupdate', update);
+                player.on('timeupdate', update);
                 update();
                 clearInterval(poller);
             }
