@@ -2149,6 +2149,15 @@
                     ? video.readyState
                     : HTMLMediaElement.HAVE_ENOUGH_DATA;
                 if (readyState >= HTMLMediaElement.HAVE_METADATA) return;
+                // Skip load() when the source is already actively loading.
+                // Under transcoding, setControllerTime's api.currentTime()
+                // triggers a source-URL switch and the new source enters
+                // NETWORK_LOADING. Calling load() here would restart that
+                // request, interrupt videojs's pending play() promise with
+                // AbortError, and emit recovery events that drove a runaway
+                // showGalleryFrame loop. The bound loadedmetadata / canplay
+                // listeners pick up when the in-flight load settles naturally.
+                if (video.networkState === HTMLMediaElement.NETWORK_LOADING) return;
                 if (typeof video.load === 'function') {
                     try {
                         video.load();
@@ -2735,8 +2744,7 @@
             // gallery-initiated seek is still in flight (e.g., during a
             // source-URL switch). The synthetic 'timeupdate' that
             // notifyControllerTimeUpdate dispatches as part of setControllerTime
-            // would otherwise re-enter syncGalleryToPlayerTime → showGalleryFrame
-            // → video.load(), interrupting videojs's in-flight play() promise.
+            // would otherwise re-enter syncGalleryToPlayerTime → showGalleryFrame.
             if (galleryControlledSeekTargetTime !== null) return;
             syncGalleryToPlayerTime(controller);
         };
