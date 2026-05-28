@@ -1237,12 +1237,25 @@
     function setControllerTimeSilently(controller, time) {
         if (!controller) return;
         const nextTime = normalizeGalleryTime(time);
-        let apiUpdated = false;
 
         if (controller.api && typeof controller.api.currentTime === 'function') {
             try {
-                controller.api.currentTime(nextTime);
-                apiUpdated = true;
+                // Skip the api setter only when the source is mid-switch.
+                // Stash's setCurrentTime re-issues setSource on every call
+                // (even with an unchanged target), so a redundant call during
+                // an in-flight transcoded source load restarts the request
+                // and interrupts videojs's pending play() promise. When the
+                // source is settled (NETWORK_IDLE) we still need to call
+                // currentTime — that's how an in-place seek (e.g. a 0.5s
+                // jump) reaches the DOM <video>, so hasReadyFrame can match.
+                if (controller.mediaEl?.networkState !== HTMLMediaElement.NETWORK_LOADING) {
+                    controller.api.currentTime(nextTime);
+                }
+                // Don't fall through to mediaEl.currentTime: under transcoding
+                // the DOM <video>.currentTime is on the transcoded stream's
+                // own timeline and assigning the user-facing target would
+                // seek the inner element to the wrong position.
+                return;
             } catch (_) {
                 // Fall back to the media element assignment below.
             }
@@ -1250,9 +1263,7 @@
 
         if (controller.mediaEl) {
             try {
-                if (!isSameGalleryTime(controller.mediaEl.currentTime, nextTime) || !apiUpdated) {
-                    controller.mediaEl.currentTime = nextTime;
-                }
+                controller.mediaEl.currentTime = nextTime;
             } catch (_) {
                 // Some players reject currentTime updates until metadata is ready.
             }

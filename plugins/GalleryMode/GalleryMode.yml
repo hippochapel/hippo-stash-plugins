@@ -1,6 +1,6 @@
 name: Gallery Mode
 description: Adds a gallery mode button to the video player toolbar for viewing a scene like a photo gallery. Pairs well with the SpriteTab plugin.
-version: "1.0"
+version: "1.1"
 url: https://github.com/hippochapel/hippo-stash-plugins/tree/main/plugins/GalleryMode
 ui:
   javascript:
