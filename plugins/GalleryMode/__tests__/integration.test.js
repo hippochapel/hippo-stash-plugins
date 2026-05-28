@@ -2292,6 +2292,42 @@ describe('ImageGalleryMode', () => {
         expect(result.message).toBe('Frame unavailable');
     });
 
+    it('fetchGalleryFrameFromStream seeks via the videojs Player api, not the DOM video, when api is available', async () => {
+        // Under transcoding, <video>.currentTime tracks the transcoded stream
+        // and diverges from the user-facing timeline. Setting it directly would
+        // capture a frame from the wrong moment. The fix routes the seek
+        // through the videojs Player's currentTime() function.
+        const { player, api } = makeVideoJsPlayer();
+        Object.defineProperty(player, 'videoWidth', { value: 640, configurable: true });
+        Object.defineProperty(player, 'videoHeight', { value: 480, configurable: true });
+
+        // Decouple api time from DOM time to simulate transcoding: the api
+        // (user-facing timeline) advances, but the DOM <video>.currentTime
+        // stays at 0 (the transcoded-stream position).
+        api.currentTime = jest.fn((value) => {
+            if (value === undefined) return api._time;
+            api._time = value;
+            return api._time;
+        });
+
+        const mockCtx = { drawImage: jest.fn() };
+        jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(mockCtx);
+        jest.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,mockframe');
+
+        const p = gallery.fetchGalleryFrameFromStream(30);
+        api.emit('seeked');
+        const result = await p;
+
+        expect(result.status).toBe('ok');
+        expect(api.currentTime).toHaveBeenCalledWith(30);
+        // The DOM <video>.currentTime should NOT have been written directly —
+        // the api owns the timeline under transcoding.
+        expect(player.currentTime).toBe(0);
+
+        HTMLCanvasElement.prototype.getContext.mockRestore();
+        HTMLCanvasElement.prototype.toDataURL.mockRestore();
+    });
+
     it('high-bandwidth mode reuses the player video surface without opening a WebSocket', async () => {
         gallery._applyState({ pluginSettings: { lb_enabled: false } });
         const { player, videoContainer } = makePlayer();

@@ -225,7 +225,12 @@
             : `${m}:${s.toString().padStart(2, '0')}`;
     }
 
-    function getPlayer() {
+    // Returns the DOM <video> element — needed for canvas drawImage, videoWidth/
+    // Height, and requestVideoFrameCallback. Do NOT use this for reading or
+    // setting playback time; under transcoding <video>.currentTime diverges
+    // from the user-facing timeline. Use getPlaybackController() instead, which
+    // routes time through the videojs Player when available.
+    function getMediaEl() {
         return document.querySelector('video.vjs-tech') || document.querySelector('video');
     }
 
@@ -238,7 +243,7 @@
     }
 
     function getGalleryVideoElement() {
-        return getPlayer();
+        return getMediaEl();
     }
 
     function getActiveGalleryMediaElement() {
@@ -562,7 +567,7 @@
     }
 
     function getVideoContainer() {
-        const video = getPlayer();
+        const video = getMediaEl();
         return video ? (video.closest('.video-js') || video.parentElement) : null;
     }
 
@@ -1168,7 +1173,7 @@
     }
 
     function getPlaybackController() {
-        const mediaEl = getPlayer();
+        const mediaEl = getMediaEl();
         if (!mediaEl) return null;
 
         const videoJsContainer = mediaEl.closest('.video-js');
@@ -1994,22 +1999,23 @@
     // --- FRAME FETCH (HIGH-BANDWIDTH) ---
     function fetchGalleryFrameFromStream(time) {
         return new Promise((resolve) => {
-            const video = getPlayer();
+            const controller = getPlaybackController();
+            const video = controller?.mediaEl;
             if (!video) {
                 resolve({ status: 'error', message: 'Frame unavailable' });
                 return;
             }
 
             const timeoutId = setTimeout(() => {
-                video.removeEventListener('seeked', onSeeked);
-                video.removeEventListener('error', onError);
+                removeControllerListener(controller.eventTarget, 'seeked', onSeeked);
+                removeControllerListener(controller.eventTarget, 'error', onError);
                 resolve({ status: 'timeout', message: 'Loading timed out' });
             }, GALLERY_HB_SEEK_TIMEOUT_MS);
 
             function cleanup() {
                 clearTimeout(timeoutId);
-                video.removeEventListener('seeked', onSeeked);
-                video.removeEventListener('error', onError);
+                removeControllerListener(controller.eventTarget, 'seeked', onSeeked);
+                removeControllerListener(controller.eventTarget, 'error', onError);
             }
 
             function onSeeked() {
@@ -2030,9 +2036,18 @@
                 resolve({ status: 'error', message: 'Frame unavailable' });
             }
 
-            video.addEventListener('seeked', onSeeked);
-            video.addEventListener('error', onError);
-            video.currentTime = time;
+            addControllerListener(controller.eventTarget, 'seeked', onSeeked);
+            addControllerListener(controller.eventTarget, 'error', onError);
+            // Seek via the videojs Player when available — its currentTime()
+            // tracks the user-facing timeline. Fall back to the DOM <video>
+            // element only when no Player exists (e.g., in older Stash builds
+            // or tests without a videojs mock). Doing both would double-seek
+            // under transcoding.
+            if (controller.api && typeof controller.api.currentTime === 'function') {
+                controller.api.currentTime(time);
+            } else {
+                video.currentTime = time;
+            }
         });
     }
 
