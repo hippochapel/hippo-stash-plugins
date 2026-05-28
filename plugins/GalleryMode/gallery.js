@@ -2731,6 +2731,13 @@
         const onSeeked = () => syncGalleryToPlayerTime(controller);
         const onTimeUpdate = () => {
             if (controller.mediaEl?.seeking) return;
+            // Under transcoding, mediaEl.seeking can stay false while a
+            // gallery-initiated seek is still in flight (e.g., during a
+            // source-URL switch). The synthetic 'timeupdate' that
+            // notifyControllerTimeUpdate dispatches as part of setControllerTime
+            // would otherwise re-enter syncGalleryToPlayerTime → showGalleryFrame
+            // → video.load(), interrupting videojs's in-flight play() promise.
+            if (galleryControlledSeekTargetTime !== null) return;
             syncGalleryToPlayerTime(controller);
         };
         const onSeeking = () => markGallerySeeking(controller);
