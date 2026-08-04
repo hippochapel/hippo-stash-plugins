@@ -158,6 +158,31 @@
     }
 
     /**
+     * Infer grid and thumbnail dimensions from the sprite sheet alone.
+     *
+     * Used when no VTT track is available, so the real thumbnail size is unknown.
+     * Stash emits sprite sheets as a square grid (9x9 = 81 frames) of thumbnails
+     * scaled to a fixed width, so the column count derived from that width also
+     * gives the row count. Deriving thumbHeight from the sheet rather than
+     * assuming 16:9 keeps this correct for portrait sources.
+     *
+     * @param {number} imageWidth - Natural width of sprite sheet
+     * @param {number} imageHeight - Natural height of sprite sheet
+     * @param {number} spriteWidthGuess - Expected width of a single thumbnail
+     * @returns {{cols: number, rows: number, thumbWidth: number, thumbHeight: number}}
+     */
+    function inferGridFromSheet(imageWidth, imageHeight, spriteWidthGuess) {
+        const cols = Math.max(1, Math.round(imageWidth / spriteWidthGuess));
+        const rows = cols; // square-grid invariant
+        return {
+            cols,
+            rows,
+            thumbWidth: imageWidth / cols,
+            thumbHeight: imageHeight / rows
+        };
+    }
+
+    /**
      * Calculate background position for a sprite in the grid
      * @param {number} index - Sprite index (0-based)
      * @param {number} cols - Number of columns in grid
@@ -298,6 +323,7 @@
         isMobileLayout,
         parseVttDimensions,
         calculateSpriteGrid,
+        inferGridFromSheet,
         calculateSpritePosition,
         calculateSpriteTime,
         getActiveSpriteIndex,

@@ -12,6 +12,10 @@
         isMobileLayout,
         getActiveSpriteIndex,
         getDefaultActiveMode,
+        parseVttDimensions,
+        calculateSpriteGrid,
+        inferGridFromSheet,
+        calculateSpritePosition,
     } = window.SpriteTabCore;
 
     // sprites.js-only constants
@@ -285,26 +289,34 @@
             const sourceH = img.naturalHeight;
             let sourceCols;
             let sourceRows;
+            let thumbW;
+            let thumbH;
 
-            if (vttData) {
-                const thumbW = parseInt(vttData[0].style.width, 10);
-                const thumbH = parseInt(vttData[0].style.height, 10);
-                if (Number.isFinite(thumbW) && thumbW > 0 && Number.isFinite(thumbH) && thumbH > 0) {
-                    sourceCols = Math.round(sourceW / thumbW);
-                    sourceRows = Math.round(sourceH / thumbH);
-                    totalSpritesCount = vttData.length;
-                } else {
-                    vttData = null;
-                }
-            }
-
-            if (!vttData) {
-                // Legacy fallback: assumes 16:9 thumbnails, incorrect for portrait.
-                sourceCols = Math.round(sourceW / SPRITE_WIDTH_GUESS);
-                const singleH = (sourceW / sourceCols) * (9 / 16);
-                sourceRows = Math.round(sourceH / singleH);
+            const vttDims = vttData ? parseVttDimensions(vttData) : null;
+            if (vttDims) {
+                thumbW = vttDims.thumbWidth;
+                thumbH = vttDims.thumbHeight;
+                const grid = calculateSpriteGrid(sourceW, sourceH, thumbW, thumbH);
+                sourceCols = grid.cols;
+                sourceRows = grid.rows;
+                totalSpritesCount = vttData.length;
+            } else {
+                // No usable VTT track: infer the grid from the sheet itself.
+                const grid = inferGridFromSheet(sourceW, sourceH, SPRITE_WIDTH_GUESS);
+                sourceCols = grid.cols;
+                sourceRows = grid.rows;
+                thumbW = grid.thumbWidth;
+                thumbH = grid.thumbHeight;
                 totalSpritesCount = sourceCols * sourceRows;
             }
+
+            // Derived from the real thumbnail size so cells and the tooltip match
+            // the source orientation rather than assuming 16:9. Pinning both axes
+            // of background-size decouples the render from the sheet's intrinsic
+            // ratio, so a frame fills its cell exactly at any orientation.
+            const cellAspect = `${thumbW} / ${thumbH}`;
+            const thumbRatio = thumbH / thumbW; // height per unit width
+            const bgSize = `${sourceCols * 100}% ${sourceRows * 100}%`;
 
             // Shared across all cells so any touch blocks synthetic mouse events on all cells
             let lastTouchTime = 0;
@@ -327,15 +339,13 @@
                 cell.setAttribute('role', 'button');
                 cell.tabIndex = (i === 0) ? 0 : -1;
                 cell.setAttribute('aria-label', `Seek to ${timeStr}`);
-                cell.style.cssText = `width: 100%; aspect-ratio: 16/9; background-image: url('${sceneData.paths.sprite}'); background-repeat: no-repeat; cursor: pointer; position: relative;`;
+                cell.style.cssText = `width: 100%; aspect-ratio: ${cellAspect}; background-image: url('${sceneData.paths.sprite}'); background-repeat: no-repeat; cursor: pointer; position: relative;`;
                 cell.style.border = pluginSettings.compact_view ? 'none' : '1px solid #333';
                 cell.style.borderRadius = pluginSettings.compact_view ? '0' : '4px';
 
                 // Set background mapping
-                cell.style.backgroundSize = `${sourceCols * 100}%`;
-                const colIdx = i % sourceCols;
-                const rowIdx = Math.floor(i / sourceCols);
-                const bgPos = `${(colIdx / (sourceCols - 1)) * 100}% ${(rowIdx / (sourceRows - 1)) * 100}%`;
+                cell.style.backgroundSize = bgSize;
+                const bgPos = calculateSpritePosition(i, sourceCols, sourceRows);
                 cell.style.backgroundPosition = bgPos;
 
                 if (pluginSettings.show_timestamps) {
@@ -351,13 +361,16 @@
                     if (!pluginSettings.tooltip_enabled) return;
 
                     previewBox.style.backgroundImage = `url('${sceneData.paths.sprite}')`;
-                    previewBox.style.backgroundSize = `${sourceCols * 100}%`;
+                    previewBox.style.backgroundSize = bgSize;
                     previewBox.style.backgroundPosition = bgPosOverride !== undefined ? bgPosOverride : bgPos;
+                    // The preview box is a single element shared across scenes, so the
+                    // aspect has to be applied per-show rather than once at build time.
+                    previewBox.style.aspectRatio = cellAspect;
                     previewTimeDisplay.innerText = timeStrOverride !== undefined ? timeStrOverride : timeStr;
 
-                    // Calculate tooltip dimensions (use fixed aspect ratio since we know it)
+                    // Calculate tooltip dimensions from the real thumbnail aspect
                     const tooltipWidth = pluginSettings.tooltip_width;
-                    const tooltipHeight = tooltipWidth * (9 / 16);
+                    const tooltipHeight = tooltipWidth * thumbRatio;
 
                     const vpWidth = window.innerWidth;
                     const vpHeight = window.innerHeight;

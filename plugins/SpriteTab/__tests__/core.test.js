@@ -14,6 +14,7 @@ const {
     isMobileLayout,
     parseVttDimensions,
     calculateSpriteGrid,
+    inferGridFromSheet,
     calculateSpritePosition,
     calculateSpriteTime,
     getActiveSpriteIndex,
@@ -309,6 +310,30 @@ describe('calculateSpriteGrid', () => {
     it('handles custom thumbnail sizes (Stash 0.31+ custom sprite generation)', () => {
         // 1280x720 sheet with 320x180 thumbs → 4 cols × 4 rows
         expect(calculateSpriteGrid(1280, 720, 320, 180)).toEqual({ cols: 4, rows: 4 });
+    });
+});
+
+describe('inferGridFromSheet', () => {
+    it('matches the legacy 16:9 math for a landscape sheet', () => {
+        // 1440x810 sheet = 9x9 grid of 160x90 thumbs. The old fallback derived
+        // rows via a hardcoded 9/16; this must produce the identical result.
+        expect(inferGridFromSheet(1440, 810, 160)).toEqual({
+            cols: 9, rows: 9, thumbWidth: 160, thumbHeight: 90
+        });
+    });
+
+    it('derives portrait thumb dimensions instead of assuming 16:9', () => {
+        // 1440x2556 sheet = 9x9 grid of 160x284 portrait thumbs. The old
+        // fallback computed 28 rows (252 cells) for this sheet.
+        expect(inferGridFromSheet(1440, 2556, 160)).toEqual({
+            cols: 9, rows: 9, thumbWidth: 160, thumbHeight: 284
+        });
+    });
+
+    it('clamps to a single column when the sheet is narrower than one thumb', () => {
+        expect(inferGridFromSheet(80, 140, 160)).toEqual({
+            cols: 1, rows: 1, thumbWidth: 80, thumbHeight: 140
+        });
     });
 });
 
