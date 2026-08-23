@@ -7,13 +7,39 @@
  */
 
 import { el, replaceChildren } from './dom.js';
+import { Events } from '../state/actions.js';
 import { formatClock, formatDuration, formatRemaining } from '../domain/format.js';
 import { sceneTitle } from '../api/scenes.js';
 import * as sel from '../state/selectors.js';
 import { logoBadge } from './logoBadge.js';
 
-export function createBanner() {
+export function createBanner({ store } = {}) {
     const root = el('div', { class: 'tvguide-banner' });
+
+    /**
+     * Leaving for Stash belongs beside the scene it opens.
+     *
+     * It used to sit in the player's control bar, where it always meant "the
+     * channel that is tuned" -- so previewing something and pressing it opened
+     * a different scene from the one on screen.
+     */
+    function watchButton(state, channel) {
+        if (!store) return null;
+        return el(
+            'button',
+            {
+                class: 'tvguide-watch',
+                type: 'button',
+                onclick: () =>
+                    store.dispatch({
+                        type: Events.EXPAND,
+                        channelId: channel.id,
+                        timeMs: state.focus.timeMs
+                    })
+            },
+            'Watch in Stash'
+        );
+    }
 
     return {
         element: root,
@@ -60,10 +86,10 @@ export function createBanner() {
                         ` · ${formatDuration(program.durationMs / 1000)}`,
                         isLive ? ` · ${formatRemaining(program.endMs - state.nowMs)}` : ''
                     ),
+                    watchButton(state, channel),
                     scene.details
                         ? el('p', { class: 'tvguide-banner-details' }, scene.details)
-                        : null,
-                    null
+                        : null
                 )
             );
         }

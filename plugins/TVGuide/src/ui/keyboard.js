@@ -175,7 +175,15 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
                 if (focusedChannelId) store.dispatch({ type: Events.TUNE, channelId: focusedChannelId });
                 return;
             case Intents.EXPAND:
-                if (focusedChannelId) store.dispatch({ type: Events.EXPAND, channelId: focusedChannelId });
+                // Opens the programme the details are describing, which is what
+                // the Watch button on the banner does too.
+                if (focusedChannelId) {
+                    store.dispatch({
+                        type: Events.EXPAND,
+                        channelId: focusedChannelId,
+                        timeMs: state.focus.timeMs
+                    });
+                }
                 return;
             case Intents.MUTE:
                 store.dispatch({ type: Events.SET_MUTED, muted: !state.muted });
@@ -187,6 +195,12 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
                 if (onHelp) onHelp();
                 return;
             default:
+                // Escape steps back out one level at a time: an enlarged player
+                // returns to the corner before the guide itself closes.
+                if (state.playerMode !== 'corner') {
+                    store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'corner' });
+                    return;
+                }
                 if (onClose) onClose();
         }
     };

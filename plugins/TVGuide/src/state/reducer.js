@@ -32,8 +32,11 @@ const windowMsOf = (state) => state.settings.guide_window_hours * 3600000;
  * walks it: MOVE_FOCUS across channels has to agree with the on-screen order,
  * or arrow-down lands on the wrong row.
  *
- * If the tuned or focused channel just became hidden, both fall back to the
- * first channel still visible rather than pointing at nothing.
+ * Focus falls back to the first visible channel when its own row leaves the
+ * screen -- it is the keyboard cursor, and MOVE_FOCUS walks this same list. The
+ * tuned channel does not: collapsing a group, searching, or filtering by type
+ * only changes what is *shown*, and retuning underneath the user because a row
+ * scrolled out of the list is not something any of those actions asked for.
  */
 function withVisibleChannels(state) {
     // The guide is always grouped, so the search box and the type filter narrow
@@ -48,7 +51,6 @@ function withVisibleChannels(state) {
     const channelGroups = groupChannels(candidates, {
         prefs: state.prefs,
         pinOrder: state.pinOrder,
-        sort: state.sort,
         sourceOrder: state.sourceOrder,
         collapsed: state.collapsedGroups
     });
@@ -59,8 +61,12 @@ function withVisibleChannels(state) {
     const next = { ...state, channels, channelGroups };
 
     const stillThere = (id) => channels.some((c) => c.id === id);
+    // Hiding a channel removes it from the guide for good; collapsing a group,
+    // searching, or filtering by type only stops it being drawn.
+    const stillExists = (id) =>
+        state.allChannels.some((c) => c.id === id) && !state.prefs[id]?.hidden;
 
-    if (next.tunedChannelId && !stillThere(next.tunedChannelId)) {
+    if (next.tunedChannelId && !stillExists(next.tunedChannelId)) {
         next.tunedChannelId = channels[0]?.id || null;
     }
     if (next.focus && !stillThere(next.focus.channelId)) {
@@ -281,12 +287,19 @@ export function reduce(state, event) {
         }
 
         case Events.EXPAND: {
-            const program = liveProgram(state, event.channelId, state.nowMs);
+            // Without a time this is "open what is on now"; with one it is
+            // "open the programme the details are describing".
+            const schedule = scheduleFor(state, event.channelId);
+            if (!schedule) return { state, effects };
+            const program = programAt(schedule, event.timeMs ?? state.nowMs, state.dayStartMs);
             if (!program) return { state, effects };
-            return {
-                state,
-                effects: [Effects.navigateToScene(program.scene.id, Math.floor(program.elapsedMs / 1000))]
-            };
+
+            // Only a live programme has a meaningful position to open at --
+            // dropping into the middle of something scheduled for later would
+            // land at an offset that means nothing yet.
+            const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
+            const offsetSeconds = isLive ? Math.floor(program.elapsedMs / 1000) : 0;
+            return { state, effects: [Effects.navigateToScene(program.scene.id, offsetSeconds)] };
         }
 
         case Events.PAN: {
@@ -324,7 +337,9 @@ export function reduce(state, event) {
             // The mouse left the grid: put the banner back on what is playing.
             if (state.preview) return { state, effects };
             const live = liveProgram(state, state.tunedChannelId, state.nowMs);
-            if (!live) return { state, effects };
+            // Nothing playing to fall back to: an empty banner is honest, where
+            // leaving the hovered scene up would claim it is on.
+            if (!live) return { state: { ...state, focus: null }, effects };
             return {
                 state: {
                     ...state,
@@ -350,7 +365,7 @@ export function reduce(state, event) {
                 state: withVisibleChannels({
                     ...state,
                     prefs: event.prefs,
-                    sort: event.sort || state.sort,
+                    managerSort: event.sort || state.managerSort,
                     lineup: event.lineup || state.lineup,
                     pinOrder: event.pinOrder || state.pinOrder,
                     collapsedGroups: event.collapsedGroups || state.collapsedGroups,
@@ -421,10 +436,12 @@ export function reduce(state, event) {
             };
         }
 
-        case Events.SET_SORT:
-            if (event.sort === state.sort) return { state, effects };
+        // Dialog-only: this orders the channel manager's own list and nothing
+        // else, so it deliberately does not recompute the visible channels.
+        case Events.SET_MANAGER_SORT:
+            if (event.sort === state.managerSort) return { state, effects };
             return {
-                state: withVisibleChannels({ ...state, sort: event.sort }),
+                state: { ...state, managerSort: event.sort },
                 effects: [Effects.persist(STORAGE_KEYS.sort, event.sort)]
             };
 
@@ -506,7 +523,11 @@ export function reduce(state, event) {
 
         case Events.SET_VIEWER_PAUSED: {
             if (event.paused === state.viewerPaused) return { state, effects };
-            const next = { ...state, viewerPaused: event.paused };
+            // Remember when the pause started so the player can freeze its
+            // readout there. The schedule keeps running -- the now-line and the
+            // grid still track real time -- but the panel describing a stopped
+            // picture must not claim to be advancing through it.
+            const next = { ...state, viewerPaused: event.paused, pausedAtMs: event.paused ? state.nowMs : 0 };
             if (event.paused) return { state: next, effects: [Effects.setPaused(true)] };
             // Resuming re-syncs to live rather than continuing from where it
             // stopped: a paused channel has fallen behind its own schedule.
@@ -525,13 +546,22 @@ export function reduce(state, event) {
                 return reduce(state, { type: Events.TUNE, channelId: event.channelId });
             }
 
+            // Previewing hides the video entirely, and a hidden element cannot
+            // stay fullscreen -- so leave it deliberately rather than letting
+            // the CSS drop it out from under the browser.
+            const leavingFullscreen = state.playerMode === 'fullscreen';
             return {
                 state: {
                     ...state,
+                    playerMode: leavingFullscreen ? 'corner' : state.playerMode,
                     preview: { channelId: event.channelId, scene: program.scene, startMs: program.startMs },
                     focus: { channelId: event.channelId, timeMs: program.startMs, source: 'sticky' }
                 },
-                effects: [Effects.setPaused(true), Effects.showPoster(program.scene)]
+                effects: [
+                    ...(leavingFullscreen ? [Effects.setPlayerMode('corner')] : []),
+                    Effects.setPaused(true),
+                    Effects.showPoster(program.scene)
+                ]
             };
         }
 

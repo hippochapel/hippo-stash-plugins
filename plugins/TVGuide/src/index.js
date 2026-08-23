@@ -65,6 +65,18 @@ function parseJsonArray(json) {
     }
 }
 
+/**
+ * Fullscreen is never restored.
+ *
+ * Nothing re-enters the Fullscreen API on load -- it needs a user gesture -- so
+ * remembering 'fullscreen' would leave the state claiming a mode the browser is
+ * not in, after which the button toggles the wrong way on its first press.
+ */
+function readPlayerMode() {
+    const stored = readStored(STORAGE_KEYS.playerMode);
+    return stored === 'theater' ? 'theater' : 'corner';
+}
+
 function readStored(key, fallback = null) {
     try {
         const value = window.localStorage.getItem(key);
@@ -172,7 +184,7 @@ export function start() {
             lineup: readLineup(),
             collapsedGroups: parseJsonArray(readStored(STORAGE_KEYS.collapsed)),
             headWidthPx: Number(readStored(STORAGE_KEYS.headWidth)) || undefined,
-            playerMode: readStored(STORAGE_KEYS.playerMode) || undefined
+            playerMode: readPlayerMode()
         });
 
         store.dispatch({

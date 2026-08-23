@@ -221,8 +221,11 @@ describe('createKeyboardHandler', () => {
         handle(event('e'));
         handle(event('Enter', { shiftKey: true }));
         expect(dispatch).toHaveBeenCalledTimes(2);
-        expect(dispatch.mock.calls[0][0]).toEqual({ type: Events.EXPAND, channelId: 'studio:1' });
-        expect(dispatch.mock.calls[1][0]).toEqual({ type: Events.EXPAND, channelId: 'studio:1' });
+        // Carries the focused time, so it opens the programme the details are
+        // describing rather than whatever happens to be live.
+        const expected = { type: Events.EXPAND, channelId: 'studio:1', timeMs: NOON };
+        expect(dispatch.mock.calls[0][0]).toEqual(expected);
+        expect(dispatch.mock.calls[1][0]).toEqual(expected);
     });
 
     it('toggles mute', () => {
@@ -235,6 +238,21 @@ describe('createKeyboardHandler', () => {
         const { handle, onClose } = harness();
         handle(event('Escape'));
         expect(onClose).toHaveBeenCalled();
+    });
+
+    it('steps out of an enlarged player before closing the guide', () => {
+        // Escape used to tear the whole guide down from fullscreen, which is a
+        // long way to fall for one keypress.
+        for (const mode of ['fullscreen', 'theater']) {
+            const { handle, dispatch, onClose } = harness({ playerMode: mode });
+            handle(event('Escape'));
+
+            expect(dispatch).toHaveBeenCalledWith({
+                type: Events.SET_PLAYER_MODE,
+                mode: 'corner'
+            });
+            expect(onClose).not.toHaveBeenCalled();
+        }
     });
 
     it('opens help', () => {

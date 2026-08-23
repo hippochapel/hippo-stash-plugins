@@ -6,6 +6,7 @@
  */
 
 import { programAt, scheduleBetween } from '../domain/schedule.js';
+import { COMPARATORS, DEFAULT_SORT } from '../domain/channelPrefs.js';
 import { programRect, nowLinePct, timeTicks, HALF_HOUR_MS } from '../domain/layout.js';
 import { PoolStatus } from './initialState.js';
 
@@ -15,8 +16,10 @@ export const windowEndMs = (state) => state.windowStartMs + windowMs(state);
 export const isOpen = (state) => state.open;
 export const isGridLayout = (state) => state.layout === 'grid';
 export const channels = (state) => state.channels;
+// Looked up in the full lineup, not the visible list: collapsing a group hides
+// a row, it does not stop the channel playing.
 export const tunedChannel = (state) =>
-    state.channels.find((c) => c.id === state.tunedChannelId) || null;
+    state.allChannels.find((c) => c.id === state.tunedChannelId) || null;
 
 export const poolStatus = (state, channelId) =>
     state.pools[channelId]?.status || PoolStatus.IDLE;
@@ -42,22 +45,32 @@ export function availableTypes(state) {
     return state.sourceOrder.filter((source) => present.has(source));
 }
 
-/** First letters present, for the A-Z rail. */
-export function availableLetters(state) {
-    const letters = new Set();
-    for (const channel of state.allChannels) {
-        const first = (channel.name || '').trim().charAt(0).toUpperCase();
-        letters.add(/[A-Z]/.test(first) ? first : '#');
-    }
-    return [...letters].sort();
+/** A channel's rail letter: its initial, or `#` for anything not A-Z. */
+export function channelLetter(channel) {
+    const first = (channel.name || '').trim().charAt(0).toUpperCase();
+    return /[A-Z]/.test(first) ? first : '#';
 }
 
-/** The first visible channel whose name starts with `letter`. */
-export function firstChannelForLetter(state, letter) {
-    const match = state.channels.find((channel) => {
-        const first = (channel.name || '').trim().charAt(0).toUpperCase();
-        return letter === '#' ? !/[A-Z]/.test(first) : first === letter;
-    });
+const groupByKey = (state, groupKey) =>
+    state.channelGroups.find((group) => group.key === groupKey) || null;
+
+/**
+ * First letters present in one group, for that group's A-Z rail.
+ *
+ * Per group rather than global: the guide is always grouped, so a global rail
+ * would offer letters that jump you out of the section you are reading.
+ */
+export function groupLetters(state, groupKey) {
+    const group = groupByKey(state, groupKey);
+    if (!group || group.collapsed) return [];
+    return [...new Set(group.channels.map(channelLetter))].sort();
+}
+
+/** The first channel in `groupKey` whose name starts with `letter`. */
+export function firstChannelForLetterInGroup(state, groupKey, letter) {
+    const group = groupByKey(state, groupKey);
+    if (!group) return null;
+    const match = group.channels.find((channel) => channelLetter(channel) === letter);
     return match ? match.id : null;
 }
 
@@ -66,6 +79,22 @@ export const ticks = (state) => timeTicks(state.windowStartMs, windowMs(state), 
 
 /** Where the now-line sits, or null when now is off-screen. */
 export const nowMarkerPct = (state) => nowLinePct(state.nowMs, state.windowStartMs, windowMs(state));
+
+/**
+ * The instant the player's readout should describe.
+ *
+ * Frozen at the pause point while paused: the schedule runs on regardless, but
+ * a stopped picture reporting an advancing position is the part that felt wrong.
+ */
+export const playbackNowMs = (state) =>
+    state.viewerPaused && state.pausedAtMs ? state.pausedAtMs : state.nowMs;
+
+/** The programme the player is showing, against the (possibly frozen) clock. */
+export function tunedProgram(state) {
+    const schedule = state.schedules[state.tunedChannelId];
+    if (!schedule) return null;
+    return programAt(schedule, playbackNowMs(state), state.dayStartMs);
+}
 
 /** Whatever is live on a channel right now. */
 export function liveProgram(state, channelId) {
@@ -119,11 +148,26 @@ export function focusedProgram(state) {
 
 export function focusedChannel(state) {
     if (!state.focus) return null;
-    return state.channels.find((c) => c.id === state.focus.channelId) || null;
+    return state.allChannels.find((c) => c.id === state.focus.channelId) || null;
 }
 
-/** True once there is something worth drawing. */
-export const hasChannels = (state) => state.channels.length > 0;
+/**
+ * True once the lineup resolved to something.
+ *
+ * Deliberately the raw lineup: collapsing every group, or a search that matches
+ * nothing, empties `channels` without meaning the library has no channels.
+ */
+export const hasChannels = (state) => state.allChannels.length > 0;
+
+/** A search or type filter that has narrowed everything away. */
+export const isFilteredEmpty = (state) =>
+    state.allChannels.length > 0 &&
+    state.channels.length === 0 &&
+    (state.guideSearch.trim() !== '' || state.typeFilter !== 'all');
+
+/** How many channels the guide holds, ignoring which groups are collapsed. */
+export const channelCount = (state) =>
+    state.channelGroups.reduce((total, group) => total + group.count, 0);
 
 export const isLoading = (state) => state.channelsStatus === PoolStatus.LOADING;
 export const loadError = (state) => state.channelsError;
@@ -132,7 +176,7 @@ export const sourceErrors = (state) => state.sourceErrors;
 // --- channel manager ---
 
 export const isManagerOpen = (state) => state.managerOpen;
-export const sortMode = (state) => state.sort;
+export const sortMode = (state) => state.managerSort;
 export const managerSource = (state) => state.managerSource;
 export const catalogStatus = (state, source = state.managerSource) =>
     state.catalogStatus[source] || PoolStatus.IDLE;
@@ -156,9 +200,14 @@ export function catalogRows(state, source = state.managerSource) {
     const query = state.managerSearch.trim().toLowerCase();
     const filtered = query ? rows.filter((c) => c.name.toLowerCase().includes(query)) : rows;
 
+    // The sort control belongs to this dialog: it orders these rows and nothing
+    // in the guide behind it.
+    const compare = COMPARATORS[state.managerSort] || COMPARATORS[DEFAULT_SORT];
+    const sorted = filtered.slice().sort(compare);
+
     const live = new Set(state.allChannels.map((c) => c.id));
 
-    return filtered.map((channel) => ({
+    return sorted.map((channel) => ({
         channel,
         // "In the guide" means resolved from the lineup, whether by a rule or
         // by an explicit pick -- hiding is a separate axis.

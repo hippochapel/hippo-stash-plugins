@@ -415,6 +415,39 @@ describe('EXPAND', () => {
         const { effects } = run(readyState(), { type: Events.EXPAND, channelId: 'studio:2' });
         expect(effects).toEqual([]);
     });
+
+    it('does nothing when the schedule has nothing at that time', () => {
+        // An empty pool builds a schedule with no entries: there is a schedule,
+        // but nothing in it to open.
+        const state = readyState({
+            schedules: { 'studio:1': buildDaySchedule('studio:1', [], DAY_KEY) }
+        });
+        expect(run(state, { type: Events.EXPAND, channelId: 'studio:1' }).effects).toEqual([]);
+    });
+
+    it('opens the programme the details are describing, not just what is live', () => {
+        const state = readyState({ nowMs: NOON + 7 * MIN, windowStartMs: NOON });
+        const live = run(state, { type: Events.EXPAND, channelId: 'studio:1' }).effects[0];
+        const later = run(state, {
+            type: Events.EXPAND,
+            channelId: 'studio:1',
+            timeMs: NOON + 40 * MIN
+        }).effects[0];
+
+        expect(later.sceneId).not.toBe(live.sceneId);
+    });
+
+    it('opens a programme that is not on yet at its start', () => {
+        // Dropping into the middle of something scheduled for later would land
+        // at an offset that means nothing yet.
+        const state = readyState({ nowMs: NOON + 7 * MIN, windowStartMs: NOON });
+        const { effects } = run(state, {
+            type: Events.EXPAND,
+            channelId: 'studio:1',
+            timeMs: NOON + 40 * MIN
+        });
+        expect(effects[0].offsetSeconds).toBe(0);
+    });
 });
 
 describe('PAN and GO_TO_NOW', () => {
@@ -588,14 +621,14 @@ describe('channel manager', () => {
                 sort: 'sceneCount',
                 lineup: [{ source: 'tag', minScenes: 3 }]
             });
-            expect(state.sort).toBe('sceneCount');
+            expect(state.managerSort).toBe('sceneCount');
             expect(state.lineup).toEqual([{ source: 'tag', minScenes: 3 }]);
             expect(state.channels.find((c) => c.id === 'studio:1').name).toBe('Renamed');
         });
 
         it('keeps the current sort and lineup when the event omits them', () => {
             const { state } = run(managerState(), { type: Events.PREFS_LOADED, prefs: {} });
-            expect(state.sort).toBe('name');
+            expect(state.managerSort).toBe('name');
             expect(state.lineup).toEqual(managerState().lineup);
         });
     });
@@ -698,20 +731,29 @@ describe('channel manager', () => {
     });
 
     describe('sorting', () => {
-        it('reorders the guide and persists the choice', () => {
+        it('leaves the guide alone and persists the choice', () => {
+            // The control belongs to the manager dialog: it orders the list you
+            // are looking at, not the guide behind it. The guide is always
+            // alphabetical, which is what makes the A-Z rails mean anything.
             const state = managerState();
             state.allChannels = [
                 { ...channel('studio:1', 'One'), sceneCount: 5 },
                 { ...channel('studio:2', 'Two'), sceneCount: 90 }
             ];
-            const { state: next, effects } = run(state, { type: Events.SET_SORT, sort: 'sceneCount' });
-            expect(next.channels.map((c) => c.id)).toEqual(['studio:2', 'studio:1']);
+            const { state: next, effects } = run(state, {
+                type: Events.SET_MANAGER_SORT,
+                sort: 'sceneCount'
+            });
+
+            expect(next.managerSort).toBe('sceneCount');
+            expect(next.channels).toBe(state.channels);
+            expect(next.channelGroups).toBe(state.channelGroups);
             expect(effects).toContainEqual({ type: 'persist', key: STORAGE_KEYS.sort, value: 'sceneCount' });
         });
 
         it('ignores a change to the sort already in use', () => {
             const state = managerState();
-            expect(run(state, { type: Events.SET_SORT, sort: 'name' }).state).toBe(state);
+            expect(run(state, { type: Events.SET_MANAGER_SORT, sort: 'name' }).state).toBe(state);
         });
     });
 
@@ -927,6 +969,34 @@ describe('grouping', () => {
         expect(state.channels.map((c) => c.id)).not.toContain('tag:1');
         expect(state.focus.channelId).toBe('studio:1');
     });
+
+    it('keeps playing the tuned channel when its group is collapsed', () => {
+        // Collapsing is about what is drawn. Retuning underneath the user
+        // because a row stopped being shown is not something they asked for.
+        const tuned = { ...mixed(), tunedChannelId: 'tag:1' };
+        const { state, effects } = run(tuned, { type: Events.TOGGLE_GROUP, key: 'tag' });
+
+        expect(state.tunedChannelId).toBe('tag:1');
+        expect(state.channels.map((c) => c.id)).not.toContain('tag:1');
+        expect(effects.filter((e) => e.type === 'tuneViewer')).toEqual([]);
+    });
+
+    it('keeps playing the tuned channel when every group is collapsed', () => {
+        let state = mixed();
+        state = { ...state, tunedChannelId: 'tag:1' };
+        for (const key of ['studio', 'performer', 'tag']) {
+            state = run(state, { type: Events.TOGGLE_GROUP, key }).state;
+        }
+        expect(state.channels).toEqual([]);
+        expect(state.tunedChannelId).toBe('tag:1');
+    });
+
+    it('still drops a tuned channel that a search has narrowed away', () => {
+        // Same code path, but a search is not a reason to stop playing either.
+        const tuned = { ...mixed(), tunedChannelId: 'tag:1' };
+        const { state } = run(tuned, { type: Events.GUIDE_SEARCH, query: 'alpha' });
+        expect(state.tunedChannelId).toBe('tag:1');
+    });
 });
 
 describe('guide search and type filter', () => {
@@ -995,6 +1065,19 @@ describe('the player', () => {
         const { state, effects } = run(readyState(), { type: Events.SET_VIEWER_PAUSED, paused: true });
         expect(state.viewerPaused).toBe(true);
         expect(effects).toEqual([{ type: 'setPaused', paused: true }]);
+    });
+
+    it('remembers when the pause started, so the readout can freeze there', () => {
+        const state = readyState({ nowMs: NOON + 7 * MIN });
+        const paused = run(state, { type: Events.SET_VIEWER_PAUSED, paused: true }).state;
+        expect(paused.pausedAtMs).toBe(NOON + 7 * MIN);
+
+        // The schedule runs on while paused; the remembered instant does not.
+        const later = run(paused, { type: Events.TICK, nowMs: NOON + 9 * MIN }).state;
+        expect(later.pausedAtMs).toBe(NOON + 7 * MIN);
+
+        const resumed = run(later, { type: Events.SET_VIEWER_PAUSED, paused: false }).state;
+        expect(resumed.pausedAtMs).toBe(0);
     });
 
     it('does not retune a paused viewer when the programme changes', () => {
@@ -1138,6 +1221,36 @@ describe('preview', () => {
         expect(next.focus.timeMs).toBeLessThanOrEqual(NOON);
     });
 
+    it('leaves fullscreen when a preview starts', () => {
+        // Previewing hides the video entirely, and a hidden element cannot stay
+        // fullscreen -- so leave deliberately rather than letting the CSS drop
+        // the browser out from under us.
+        const state = readyState({ playerMode: 'fullscreen' });
+        const entries = state.schedules['studio:1'].entries;
+
+        const { state: next, effects } = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: DAY_START + entries[1].offsetMs + 1000
+        });
+
+        expect(next.playerMode).toBe('corner');
+        expect(effects).toContainEqual({ type: 'setPlayerMode', mode: 'corner' });
+    });
+
+    it('leaves the player mode alone when previewing from the corner', () => {
+        const state = readyState();
+        const entries = state.schedules['studio:1'].entries;
+        const { state: next, effects } = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: DAY_START + entries[1].offsetMs + 1000
+        });
+
+        expect(next.playerMode).toBe('corner');
+        expect(effectTypes(effects)).not.toContain('setPlayerMode');
+    });
+
     it('leaves focus alone when tuning a channel with no programming', () => {
         const state = readyState();
         const before = state.focus;
@@ -1262,8 +1375,10 @@ describe('focus source', () => {
         expect(run(previewing, { type: Events.FOCUS_LIVE }).state).toBe(previewing);
     });
 
-    it('does nothing when the tuned channel has no programming', () => {
+    it('clears the details when the tuned channel has no programming', () => {
+        // Nothing live to fall back to. An empty banner is honest; leaving the
+        // scene the mouse just left up would claim it is on.
         const state = readyState({ tunedChannelId: 'studio:2' });
-        expect(run(state, { type: Events.FOCUS_LIVE }).state).toBe(state);
+        expect(run(state, { type: Events.FOCUS_LIVE }).state.focus).toBeNull();
     });
 });

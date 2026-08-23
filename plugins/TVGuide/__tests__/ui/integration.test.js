@@ -63,7 +63,6 @@ function baseState(overrides = {}) {
     state.channelGroups = groupChannels(state.allChannels, {
         prefs: state.prefs,
         pinOrder: state.pinOrder,
-        sort: state.sort,
         sourceOrder: KNOWN_SOURCES,
         collapsed: state.collapsedGroups
     });
@@ -355,6 +354,38 @@ describe('banner', () => {
         banner.render({ ...state, focus: { channelId: 'studio:1', timeMs: DAY_START + future.offsetMs } });
         expect(banner.element.querySelector('.tvguide-live-badge')).toBeNull();
     });
+
+    it('offers to open the described scene in Stash', () => {
+        // The button used to live on the player, where it always meant "the
+        // tuned channel" -- so it opened a different scene from the one the
+        // details described.
+        const store = createStore({ initialState: baseState() });
+        const banner = createBanner({ store });
+        const future = store.getState().schedules['studio:1'].entries[2];
+        const timeMs = DAY_START + future.offsetMs;
+
+        store.dispatch({ type: Events.FOCUS_CELL, channelId: 'studio:1', timeMs });
+        banner.render(store.getState());
+
+        const watch = banner.element.querySelector('.tvguide-watch');
+        expect(watch.textContent).toBe('Watch in Stash');
+
+        const dispatched = [];
+        const spy = createStore({ initialState: baseState() });
+        spy.dispatch = (event) => dispatched.push(event);
+        const spied = createBanner({ store: spy });
+        spied.render(store.getState());
+        spied.element.querySelector('.tvguide-watch').click();
+
+        expect(dispatched).toEqual([{ type: Events.EXPAND, channelId: 'studio:1', timeMs }]);
+    });
+
+    it('has nothing to open when nothing is described', () => {
+        const store = createStore({ initialState: baseState({ focus: null }) });
+        const banner = createBanner({ store });
+        banner.render(store.getState());
+        expect(banner.element.querySelector('.tvguide-watch')).toBeNull();
+    });
 });
 
 describe('overlay', () => {
@@ -380,6 +411,77 @@ describe('overlay', () => {
         overlay.render(store.getState());
         return { store, overlay, viewer };
     }
+
+    const typeButtons = (overlay) =>
+        [...overlay.element.querySelectorAll('.tvguide-typebutton')].map((b) => b.textContent);
+
+    const mixedState = (overrides = {}) =>
+        baseState({
+            allChannels: [
+                channel('studio:1', 'Channel One'),
+                channel('studio:2', 'Channel Two'),
+                { ...channel('tag:1', 'Beach'), source: 'tag' }
+            ],
+            ...overrides
+        });
+
+    describe('the type chips', () => {
+        it('live in the toolbar, not in a bar of their own', () => {
+            // Two stacked strips of channel controls read as two unrelated
+            // things, and the lower one was being squeezed to nothing by the
+            // guide below it.
+            const { overlay } = mountOverlay(mixedState());
+            const bar = overlay.element.querySelector('.tvguide-typebar');
+            expect(bar.closest('.tvguide-topbar')).not.toBeNull();
+            expect(overlay.element.querySelector('.tvguide-grid .tvguide-typebar')).toBeNull();
+        });
+
+        it('puts the whole toolbar below the scene details', () => {
+            const { overlay } = mountOverlay(mixedState());
+            const children = [...overlay.element.children].map((n) => n.className);
+            expect(children.indexOf('tvguide-topbar')).toBeGreaterThan(
+                children.indexOf('tvguide-header')
+            );
+        });
+
+        it('offers All plus a chip per type that has channels', () => {
+            const { overlay } = mountOverlay(mixedState());
+            expect(typeButtons(overlay)).toEqual(['All', 'Studios', 'Tags']);
+        });
+
+        it('leaves out a type with no channels, since it is not a mode you can be in', () => {
+            const { overlay } = mountOverlay(mixedState());
+            expect(typeButtons(overlay)).not.toContain('Models');
+            expect(typeButtons(overlay)).not.toContain('Groups');
+        });
+
+        it('hides the chips entirely when there is only one type', () => {
+            const { overlay } = mountOverlay(baseState());
+            expect(overlay.element.querySelector('.tvguide-typebar').hidden).toBe(true);
+        });
+
+        it('narrows the guide to one type', () => {
+            const { store, overlay } = mountOverlay(mixedState());
+            [...overlay.element.querySelectorAll('.tvguide-typebutton')]
+                .find((b) => b.textContent === 'Tags')
+                .click();
+
+            expect(store.getState().typeFilter).toBe('tag');
+            const ids = [...overlay.element.querySelectorAll('.tvguide-row')].map(
+                (r) => r.dataset.channelId
+            );
+            expect(ids).toEqual(['tag:1']);
+        });
+
+        it('jumps to a group as well as filtering to it', () => {
+            const { overlay } = mountOverlay(mixedState());
+            [...overlay.element.querySelectorAll('.tvguide-typebutton')]
+                .find((b) => b.textContent === 'Tags')
+                .click();
+
+            expect(overlay.element.querySelector('.tvguide-group[data-group="tag"]')).not.toBeNull();
+        });
+    });
 
     it('presents itself as a modal dialog', () => {
         const { overlay } = mountOverlay(baseState());
@@ -467,6 +569,44 @@ describe('overlay', () => {
 
         store.dispatch({ type: Events.CHANNELS_LOADED, channels: [], errors: [] });
         expect(overlay.element.querySelector('.tvguide-status').textContent).toContain('No channels');
+    });
+
+    it('does not claim there are no channels when they are merely collapsed', () => {
+        // Collapsing every group empties the visible list, which is not the
+        // same thing as a library with nothing in it -- and "lower the minimum
+        // scene count" is useless advice when the lineup is full.
+        const { store, overlay } = mountOverlay(baseState());
+        store.dispatch({ type: Events.TOGGLE_GROUP, key: 'studio' });
+
+        expect(store.getState().channels).toEqual([]);
+        expect(overlay.element.querySelector('.tvguide-status').textContent).not.toContain('No channels');
+    });
+
+    it('says so when a search matches nothing', () => {
+        const { store, overlay } = mountOverlay(baseState());
+        store.dispatch({ type: Events.GUIDE_SEARCH, query: 'nothing at all' });
+
+        expect(overlay.element.querySelector('.tvguide-status').textContent).not.toContain('No channels');
+        expect(overlay.element.querySelector('.tvguide-grid-empty').textContent).toBe('No channels match.');
+    });
+
+    it('keeps quiet about matching when the guide is only collapsed', () => {
+        const { store, overlay } = mountOverlay(baseState());
+        store.dispatch({ type: Events.TOGGLE_GROUP, key: 'studio' });
+        expect(overlay.element.querySelector('.tvguide-grid-empty')).toBeNull();
+    });
+
+    it('scrolls back to the player when it expands to theater', () => {
+        // Theater makes the overlay itself scrollable, and it inherited
+        // whatever the corner layout was scrolled to -- which put the guide on
+        // screen and the newly-enlarged player above it.
+        const { store, overlay } = mountOverlay(baseState());
+        overlay.element.scrollTop = 400;
+
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'theater' });
+
+        expect(overlay.element.classList.contains('is-theater')).toBe(true);
+        expect(overlay.element.scrollTop).toBe(0);
     });
 
     it('mentions partly-failed sources without hiding the channels that worked', () => {

@@ -37,6 +37,15 @@ function mount(overrides = {}) {
         lineup: [{ source: 'studio', minScenes: 5 }],
         allChannels: [chan('studio:1', 'Alpha', 50), chan('studio:2', 'Bravo', 20)],
         channels: [chan('studio:1', 'Alpha', 50), chan('studio:2', 'Bravo', 20)],
+        channelGroups: [
+            {
+                key: 'studio',
+                source: 'studio',
+                channels: [chan('studio:1', 'Alpha', 50), chan('studio:2', 'Bravo', 20)],
+                collapsed: false,
+                count: 2
+            }
+        ],
         ...overrides
     };
     const store = createStore({ initialState });
@@ -153,21 +162,40 @@ describe('search', () => {
 
 describe('sorting', () => {
     it('offers the sort modes and reflects the current one', () => {
-        const { manager } = mount({ sort: 'sceneCount' });
+        const { manager } = mount({ managerSort: 'sceneCount' });
         const select = manager.element.querySelector('.tvguide-manager-sort');
         expect(select.value).toBe('sceneCount');
         // "Source" is gone: the guide groups by source, so sorting by it did nothing.
         expect(Array.from(select.options).map((o) => o.value)).toEqual(['name', 'sceneCount']);
     });
 
-    it('changes the guide order', () => {
+    it('reorders this dialog and leaves the guide alone', () => {
+        // The control belongs to the panel you are looking at. Reaching out and
+        // reordering the guide behind it is not what "Sort" offered to do.
         const { store, manager } = mount();
+        const before = store.getState().channels;
         const select = manager.element.querySelector('.tvguide-manager-sort');
         select.value = 'sceneCount';
         select.dispatchEvent(new Event('change'));
 
-        expect(store.getState().sort).toBe('sceneCount');
-        expect(store.getState().channels.map((c) => c.id)).toEqual(['studio:1', 'studio:2']);
+        expect(store.getState().managerSort).toBe('sceneCount');
+        expect(store.getState().channels).toBe(before);
+    });
+
+    it('actually orders its own rows by the chosen mode', () => {
+        // It never did before: the select wrote to the guide's ordering and this
+        // panel kept showing whatever order the server returned.
+        const names = (m) =>
+            [...m.element.querySelectorAll('.tvguide-manager-row-name')].map((n) => n.textContent);
+
+        // Deliberately a catalogue where the two orders disagree.
+        const catalog = {
+            ...CATALOG,
+            studio: [chan('studio:1', 'Zed', 90), chan('studio:2', 'Alpha', 5)]
+        };
+
+        expect(names(mount({ catalog }).manager)).toEqual(['Alpha', 'Zed']);
+        expect(names(mount({ catalog, managerSort: 'sceneCount' }).manager)).toEqual(['Zed', 'Alpha']);
     });
 });
 

@@ -15,6 +15,10 @@
  *   in the window it falls.
  * - **Channels are always grouped**, and collapsed groups render no rows, so the
  *   flattened `state.channels` the reducer walks matches the DOM exactly.
+ * - **Nothing here may call `scrollIntoView`, or `focus()` without
+ *   `preventScroll`.** Both scroll every ancestor scroll container, and in
+ *   theater mode the overlay itself is one -- which drags the player off screen
+ *   the moment the grid re-adopts focus.
  */
 
 import { el, replaceChildren } from './dom.js';
@@ -33,12 +37,6 @@ import { createChannelRail } from './channelRail.js';
 const GROUP_LABELS = { ...SOURCE_LABELS, [PINNED_GROUP]: 'Pinned' };
 
 export function createGrid({ store, onRowVisible, touchGuard }) {
-    const typeBar = el('div', {
-        class: 'tvguide-typebar',
-        role: 'toolbar',
-        'aria-label': 'Filter channels by type'
-    });
-
     const ticksRow = el('div', { class: 'tvguide-ticks', 'aria-hidden': 'true' });
     const gridlines = el('div', { class: 'tvguide-gridlines', 'aria-hidden': 'true' });
     const nowLine = el('div', { class: 'tvguide-nowline', 'aria-hidden': 'true' });
@@ -79,7 +77,6 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     const root = el(
         'div',
         { class: 'tvguide-grid' },
-        typeBar,
         el(
             'div',
             { class: 'tvguide-grid-head' },
@@ -116,6 +113,16 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     let renderedRowSignature = '';
     let dragChannelId = null;
+    let railGroupKey = null;
+    // Set while the grid moves DOM focus itself, so the block's own `onfocus`
+    // cannot promote a hover into a keyboard focus -- which is what the banner's
+    // mouse-leave revert keys on.
+    let programmaticFocus = false;
+
+    // The rail belongs to the group you are scrolled into, so it has to follow
+    // the scroll -- but through a local, never the store: a dispatch per scroll
+    // frame would re-render the whole grid.
+    scroll.addEventListener('scroll', () => syncRail(store.getState()), { passive: true });
 
     // Pointer drag on the divider. Pointer events cover mouse and touch in one.
     resizer.addEventListener('pointerdown', (event) => {
@@ -140,11 +147,9 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         render(state) {
             root.style.setProperty('--tvguide-head-width', `${state.headWidthPx}px`);
 
-            renderTypeBar(state);
             renderTicks(state);
             renderGridlines(state);
             renderNowLine(state);
-            rail.render(state);
 
             const signature = rowsSignature(state);
             if (signature !== renderedRowSignature) {
@@ -153,9 +158,12 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             } else {
                 updateRows(state);
             }
+
+            syncRail(state);
         },
 
         scrollChannelIntoView,
+        scrollGroupIntoView,
 
         destroy() {
             if (observer) observer.disconnect();
@@ -164,47 +172,9 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     // ---- chrome -------------------------------------------------------------
 
-    /**
-     * A button per source type that actually has channels.
-     *
-     * A type you have no channels for is not a mode you can be in, so it is
-     * left out rather than shown greyed.
-     */
-    function renderTypeBar(state) {
-        const types = sel.availableTypes(state);
-        const active = state.typeFilter;
-
-        typeBar.hidden = types.length < 2;
-        if (typeBar.hidden) {
-            replaceChildren(typeBar);
-            return;
-        }
-
-        replaceChildren(
-            typeBar,
-            [['all', 'All'], ...types.map((t) => [t, SOURCE_LABELS[t] || t])].map(([value, label]) =>
-                el(
-                    'button',
-                    {
-                        class: 'tvguide-typebutton',
-                        type: 'button',
-                        'aria-pressed': active === value ? 'true' : 'false',
-                        onclick: () => {
-                            store.dispatch({ type: Events.SET_TYPE_FILTER, typeFilter: value });
-                            // Also jump there, so the button navigates when you
-                            // are already showing everything.
-                            if (value !== 'all') scrollGroupIntoView(value);
-                        }
-                    },
-                    label
-                )
-            )
-        );
-    }
-
     function scrollGroupIntoView(key) {
         const header = body.querySelector(`.tvguide-group[data-group="${cssEscape(key)}"]`);
-        if (header && header.scrollIntoView) header.scrollIntoView({ block: 'start' });
+        if (header) scrollTo(header, 'start');
     }
 
     function renderTicks(state) {
@@ -257,8 +227,32 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                 nodes.push(channelRow(state, group, channel));
             }
         }
+        // A search or type filter that matched nothing needs saying here. Every
+        // group merely being collapsed does not -- the headers explain
+        // themselves, and there is no lineup problem to report.
+        if (nodes.length === 0 && sel.isFilteredEmpty(state)) {
+            nodes.push(el('div', { class: 'tvguide-grid-empty' }, 'No channels match.'));
+        }
         replaceChildren(body, nodes);
         updateRows(state);
+    }
+
+    /**
+     * Which group the scroll position is inside: the last header at or above it.
+     */
+    function currentGroupKey() {
+        const headers = body.querySelectorAll('.tvguide-group');
+        let key = null;
+        for (const header of headers) {
+            if (header.offsetTop > scroll.scrollTop) break;
+            key = header.dataset.group;
+        }
+        return key || (headers[0] ? headers[0].dataset.group : null);
+    }
+
+    function syncRail(state) {
+        railGroupKey = currentGroupKey();
+        rail.render(state, railGroupKey);
     }
 
     function groupHeader(group) {
@@ -462,13 +456,18 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                 'data-end-ms': String(program.endMs),
                 style: { left: `${rect.leftPct}%`, width: `${rect.widthPct}%` },
                 onclick: () => activate(channelId, program),
-                onfocus: () =>
+                onfocus: () => {
+                    // Our own `adoptFocus` triggers this too; recording that as
+                    // a keyboard focus would upgrade a hover into something the
+                    // mouse leaving can no longer undo.
+                    if (programmaticFocus) return;
                     store.dispatch({
                         type: Events.FOCUS_CELL,
                         channelId,
                         timeMs: program.startMs,
                         source: 'keyboard'
-                    }),
+                    });
+                },
                 onmouseenter: () => {
                     if (touchGuard && touchGuard.isSyntheticMouse()) return;
                     store.dispatch({
@@ -516,12 +515,25 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     }
 
     function adoptFocus(block) {
+        // The guide is not on screen in fullscreen; moving focus into it there
+        // only risks scrolling something the user cannot see.
+        if (store.getState().playerMode === 'fullscreen') return;
+
         const active = document.activeElement;
         const focusIsInGrid = active && (body.contains(active) || active === document.body);
         if (!focusIsInGrid || active === block) return;
 
         queueMicrotask(() => {
-            if (block.isConnected && document.activeElement !== block) block.focus();
+            if (!block.isConnected || document.activeElement === block) return;
+            programmaticFocus = true;
+            try {
+                // `preventScroll` is load-bearing: without it every tick drags
+                // the scroller back to the focused block, which is what undid a
+                // letter jump a second after it happened.
+                block.focus({ preventScroll: true });
+            } finally {
+                programmaticFocus = false;
+            }
         });
     }
 
@@ -529,7 +541,23 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     function scrollChannelIntoView(channelId) {
         const row = body.querySelector(`.tvguide-row[data-channel-id="${cssEscape(channelId)}"]`);
-        if (row && row.scrollIntoView) row.scrollIntoView({ block: 'center' });
+        if (row) scrollTo(row, 'center');
+    }
+
+    /**
+     * Scroll one element into view *within the grid*.
+     *
+     * Deliberately not `scrollIntoView`: that walks every ancestor scroll
+     * container, and in theater mode the overlay is one of them -- so a jump by
+     * letter also scrolled the player off the top of the screen.
+     */
+    function scrollTo(element, block) {
+        const offset =
+            block === 'center'
+                ? Math.max(0, (scroll.clientHeight - element.offsetHeight) / 2)
+                : 0;
+        scroll.scrollTop = Math.max(0, element.offsetTop - offset);
+        syncRail(store.getState());
     }
 
     function cssEscape(value) {

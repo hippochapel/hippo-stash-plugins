@@ -38,11 +38,21 @@ export const ICONS = {
     unmuted: () => icon(['M4 9v6h4l5 4V5L8 9H4z', 'M16.5 8.5a5 5 0 010 7']),
     theater: () => icon(['M3 6h18v9H3z'], { filled: false }),
     fullscreen: () => icon(['M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'], { filled: false }),
-    exitFullscreen: () => icon(['M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'], { filled: false })
+    exitFullscreen: () => icon(['M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'], { filled: false }),
+    search: () => icon(['M11 4a7 7 0 100 14 7 7 0 000-14zM16 16l4.5 4.5'], { filled: false })
 };
 
-/** Replace a button's icon while leaving its text label alone. */
+/**
+ * Replace a button's icon while leaving its text label alone.
+ *
+ * Idempotent, and that matters beyond saving a few nodes: the player's controls
+ * sit inside the element that goes fullscreen, and `render` runs every second.
+ * Tearing an SVG out of the fullscreen subtree once a tick is exactly the kind
+ * of churn that drops the browser out of fullscreen again.
+ */
 export function setIcon(button, name) {
+    if (button.dataset.icon === name) return;
+    button.dataset.icon = name;
     const existing = button.querySelector('svg');
     if (existing) existing.remove();
     button.insertBefore(ICONS[name](), button.firstChild);

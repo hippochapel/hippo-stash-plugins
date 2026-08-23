@@ -35,19 +35,6 @@ export function createPlayer({ store, viewer }) {
     const theater = controlButton('tvguide-theater', () => cycleMode('theater'));
     const fullscreen = controlButton('tvguide-fullscreen', () => cycleMode('fullscreen'));
 
-    const watch = el(
-        'button',
-        {
-            class: 'tvguide-watch',
-            type: 'button',
-            onclick: () => {
-                const { tunedChannelId } = store.getState();
-                if (tunedChannelId) store.dispatch({ type: Events.EXPAND, channelId: tunedChannelId });
-            }
-        },
-        'Watch'
-    );
-
     const backToLive = el(
         'button',
         {
@@ -67,8 +54,7 @@ export function createPlayer({ store, viewer }) {
         backToLive,
         el('span', { class: 'tvguide-player-spacer' }),
         theater,
-        fullscreen,
-        watch
+        fullscreen
     );
 
     const stage = el('div', { class: 'tvguide-player-stage' }, viewer.element, spinner, controls);
@@ -124,11 +110,12 @@ export function createPlayer({ store, viewer }) {
 
     // Let state follow the browser: pressing Esc, or the OS dropping out of
     // fullscreen, must not leave the button claiming we are still in it.
-    document.addEventListener('fullscreenchange', () => {
+    const onFullscreenChange = () => {
         if (!isFullscreen() && store.getState().playerMode === 'fullscreen') {
             store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'corner' });
         }
-    });
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
 
     /**
      * Control visibility is driven from JS rather than `@media (hover: hover)`.
@@ -160,10 +147,17 @@ export function createPlayer({ store, viewer }) {
             applyFullscreen(mode === 'fullscreen');
         },
 
+        destroy() {
+            document.removeEventListener('fullscreenchange', onFullscreenChange);
+            clearTimeout(hideTimer);
+        },
+
         render(state) {
             const channel = sel.tunedChannel(state);
             const previewing = sel.isPreviewing(state);
-            const program = previewing ? null : channel && sel.liveProgram(state, channel.id);
+            // The playback clock, not the wall clock: paused, it stops where it
+            // was stopped rather than running on with the schedule.
+            const program = previewing ? null : channel && sel.tunedProgram(state);
             const scene = previewing ? state.preview.scene : program?.scene;
 
             root.dataset.mode = state.playerMode;
@@ -208,6 +202,7 @@ export function createPlayer({ store, viewer }) {
         }
 
         const pct = Math.min(100, Math.max(0, (program.elapsedMs / program.durationMs) * 100));
+        const nowMs = sel.playbackNowMs(state);
 
         replaceChildren(
             progress,
@@ -228,7 +223,7 @@ export function createPlayer({ store, viewer }) {
                 { class: 'tvguide-player-times' },
                 `${formatDuration(program.elapsedMs / 1000)} / ${formatDuration(program.durationMs / 1000)}`,
                 ` · ends ${formatClock(program.endMs)}`,
-                ` · ${formatRemaining(program.endMs - state.nowMs)}`
+                ` · ${formatRemaining(program.endMs - nowMs)}`
             )
         );
     }

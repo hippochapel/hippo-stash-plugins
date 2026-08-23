@@ -50,6 +50,9 @@ export function createInitialState() {
         // Player
         playerMode: 'corner',
         viewerPaused: false,
+        // Wall-clock instant the user paused at, so the player readout can
+        // freeze instead of running on with the schedule. 0 when playing.
+        pausedAtMs: 0,
         // A scene being previewed instead of the live stream, or null.
         preview: null,
 
@@ -64,7 +67,9 @@ export function createInitialState() {
         lineup: DEFAULT_LINEUP,
         pinOrder: [],
         prefs: {},
-        sort: DEFAULT_SORT,
+        // Dialog-only: the guide itself is always alphabetical, which is what
+        // makes the per-group A-Z rails mean anything.
+        managerSort: DEFAULT_SORT,
         managerOpen: false,
         managerSearch: '',
         // Keyed by source: the catalogue is fetched one type at a time.

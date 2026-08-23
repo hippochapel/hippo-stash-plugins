@@ -46,7 +46,7 @@ export function createManager({ store }) {
         {
             id: 'tvguide-manager-sort',
             class: 'tvguide-manager-sort',
-            onchange: (e) => store.dispatch({ type: Events.SET_SORT, sort: e.target.value })
+            onchange: (e) => store.dispatch({ type: Events.SET_MANAGER_SORT, sort: e.target.value })
         },
         SORT_MODES.map((mode) => el('option', { value: mode }, SORT_LABELS[mode]))
     );
@@ -107,7 +107,7 @@ export function createManager({ store }) {
         root.hidden = !state.managerOpen;
         if (!state.managerOpen) return;
 
-        if (sortSelect.value !== state.sort) sortSelect.value = state.sort;
+        if (sortSelect.value !== state.managerSort) sortSelect.value = state.managerSort;
         if (search.value !== state.managerSearch) search.value = state.managerSearch;
 
         renderStatus(state);
@@ -121,7 +121,7 @@ export function createManager({ store }) {
             sel.catalogStatus(state),
             (state.catalog[state.managerSource] || []).length,
             state.managerSearch,
-            state.sort,
+            state.managerSort,
             JSON.stringify(state.lineup),
             JSON.stringify(state.prefs),
             // Pins live outside prefs now; without this, pinning changes the
@@ -154,7 +154,9 @@ export function createManager({ store }) {
         } else if (sel.catalogError(state)) {
             status.textContent = `Could not load channels: ${sel.catalogError(state)}`;
         } else {
-            const shown = state.channels.length;
+            // Counted from the groups, so collapsing one does not read as
+            // channels having left the guide.
+            const shown = sel.channelCount(state);
             const hidden = Object.values(state.prefs).filter((p) => p.hidden).length;
             status.textContent = hidden > 0
                 ? `${shown} channels in the guide, ${hidden} hidden.`

@@ -1,6 +1,7 @@
 import * as sel from '../../src/state/selectors.js';
 import { createInitialState, PoolStatus } from '../../src/state/initialState.js';
 import { buildDaySchedule, dayBucket } from '../../src/domain/schedule.js';
+import { groupChannels, flattenGroups } from '../../src/domain/channelPrefs.js';
 
 const MIN = 60000;
 const HOUR = 3600000;
@@ -25,6 +26,7 @@ function state(overrides = {}) {
         dayKey: DAY_KEY,
         dayStartMs: DAY_START,
         windowStartMs: NOON,
+        allChannels: [chan('studio:1', 'One'), chan('studio:2', 'Two')],
         channels: [chan('studio:1', 'One'), chan('studio:2', 'Two')],
         tunedChannelId: 'studio:1',
         focus: { channelId: 'studio:1', timeMs: NOON },
@@ -55,9 +57,38 @@ describe('channel selectors', () => {
         expect(sel.poolStatus(state(), 'studio:2')).toBe(PoolStatus.IDLE);
     });
 
-    it('reports whether there is anything to draw', () => {
+    it('reports whether the lineup resolved to anything', () => {
         expect(sel.hasChannels(state())).toBe(true);
-        expect(sel.hasChannels(state({ channels: [] }))).toBe(false);
+        expect(sel.hasChannels(state({ allChannels: [] }))).toBe(false);
+    });
+
+    it('still reports channels when every group is collapsed', () => {
+        // The visible list is empty, but the library plainly has channels --
+        // telling the user to lower the minimum scene count would be nonsense.
+        expect(sel.hasChannels(state({ channels: [] }))).toBe(true);
+    });
+
+    it('distinguishes a filter that matched nothing from a collapsed guide', () => {
+        expect(sel.isFilteredEmpty(state({ channels: [] }))).toBe(false);
+        expect(sel.isFilteredEmpty(state({ channels: [], guideSearch: 'zzz' }))).toBe(true);
+        expect(sel.isFilteredEmpty(state({ channels: [], typeFilter: 'tag' }))).toBe(true);
+        // Nothing to narrow in the first place.
+        expect(sel.isFilteredEmpty(state({ allChannels: [], channels: [], guideSearch: 'z' }))).toBe(false);
+    });
+
+    it('counts the channels in the guide regardless of collapse', () => {
+        const s = state({
+            channels: [],
+            channelGroups: [
+                { key: 'studio', channels: [], collapsed: true, count: 7 },
+                { key: 'tag', channels: [], collapsed: true, count: 3 }
+            ]
+        });
+        expect(sel.channelCount(s)).toBe(10);
+    });
+
+    it('finds the tuned channel even while its group is collapsed', () => {
+        expect(sel.tunedChannel(state({ channels: [] })).name).toBe('One');
     });
 
     it('exposes load status and errors', () => {
@@ -267,22 +298,61 @@ describe('channel manager selectors', () => {
 });
 
 
+describe('the playback clock', () => {
+    it('tracks the wall clock while playing', () => {
+        expect(sel.playbackNowMs(state())).toBe(NOON);
+    });
+
+    it('freezes at the pause point while paused', () => {
+        const paused = state({ viewerPaused: true, pausedAtMs: NOON - 5 * MIN, nowMs: NOON });
+        expect(sel.playbackNowMs(paused)).toBe(NOON - 5 * MIN);
+    });
+
+    it('ignores a stale pause instant once playing again', () => {
+        expect(sel.playbackNowMs(state({ viewerPaused: false, pausedAtMs: NOON - MIN }))).toBe(NOON);
+        // Paused before the clock ever ran: nothing to freeze at.
+        expect(sel.playbackNowMs(state({ viewerPaused: true, pausedAtMs: 0 }))).toBe(NOON);
+    });
+
+    it('describes the tuned programme against the frozen clock', () => {
+        // Paused twenty minutes ago, the readout must describe the schedule as
+        // it stood then -- not as it stands now.
+        const pausedAtMs = NOON - 20 * MIN;
+        const paused = sel.tunedProgram(state({ viewerPaused: true, pausedAtMs }));
+        const thenLive = sel.liveProgram(state({ nowMs: pausedAtMs }), 'studio:1');
+
+        expect(paused.elapsedMs).toBe(thenLive.elapsedMs);
+        expect(paused.elapsedMs).not.toBe(sel.tunedProgram(state()).elapsedMs);
+        expect(sel.tunedProgram(state({ tunedChannelId: 'studio:2' }))).toBeNull();
+    });
+});
+
 describe('guide navigation selectors', () => {
     const chan = (id, name, source = 'studio') => ({
         id, source, name, logo: {}, sceneCount: 5, sceneFilter: {}
     });
 
-    const navState = (overrides = {}) =>
-        state({
-            sourceOrder: ['studio', 'performer', 'tag', 'group', 'savedFilter'],
-            allChannels: [
-                chan('studio:1', 'Alpha'),
-                chan('studio:2', 'Bravo'),
-                chan('tag:1', 'Beach', 'tag')
-            ],
-            channels: [chan('studio:1', 'Alpha'), chan('studio:2', 'Bravo'), chan('tag:1', 'Beach', 'tag')],
+    // The rail reads `channelGroups`, so derive it the way the reducer does
+    // rather than hand-writing a shape that could drift from the real one.
+    const navState = (overrides = {}) => {
+        const sourceOrder = ['studio', 'performer', 'tag', 'group', 'savedFilter'];
+        const allChannels = overrides.allChannels || [
+            chan('studio:1', 'Alpha'),
+            chan('studio:2', 'Bravo'),
+            chan('tag:1', 'Beach', 'tag')
+        ];
+        const collapsedGroups = overrides.collapsedGroups || [];
+        const channelGroups = groupChannels(allChannels, { sourceOrder, collapsed: collapsedGroups });
+
+        return state({
+            sourceOrder,
+            allChannels,
+            collapsedGroups,
+            channelGroups,
+            channels: flattenGroups(channelGroups),
             ...overrides
         });
+    };
 
     it('offers a button per source type actually present', () => {
         expect(sel.availableTypes(navState())).toEqual(['studio', 'tag']);
@@ -293,18 +363,35 @@ describe('guide navigation selectors', () => {
         expect(sel.availableTypes(single)).toEqual(['studio']);
     });
 
-    it('lists the first letters present, sorted', () => {
-        expect(sel.availableLetters(navState())).toEqual(['A', 'B']);
+    it('lists the first letters present in one group, sorted', () => {
+        expect(sel.groupLetters(navState(), 'studio')).toEqual(['A', 'B']);
+        expect(sel.groupLetters(navState(), 'tag')).toEqual(['B']);
+    });
+
+    it('offers no letters for a collapsed group or one that is not there', () => {
+        expect(sel.groupLetters(navState({ collapsedGroups: ['studio'] }), 'studio')).toEqual([]);
+        expect(sel.groupLetters(navState(), 'performer')).toEqual([]);
     });
 
     it('tolerates a channel with no name', () => {
         const s2 = navState({ allChannels: [{ id: 'studio:9', source: 'studio', logo: {} }] });
-        expect(sel.availableLetters(s2)).toEqual(['#']);
+        expect(sel.groupLetters(s2, 'studio')).toEqual(['#']);
     });
 
     it('matches a nameless channel under # when jumping', () => {
-        const s2 = navState({ channels: [{ id: 'studio:9', source: 'studio', logo: {} }] });
-        expect(sel.firstChannelForLetter(s2, '#')).toBe('studio:9');
+        const s2 = navState({ allChannels: [{ id: 'studio:9', source: 'studio', logo: {} }] });
+        expect(sel.firstChannelForLetterInGroup(s2, 'studio', '#')).toBe('studio:9');
+    });
+
+    it('falls back to name order for a sort mode it does not know', () => {
+        const s2 = state({
+            managerSource: 'studio',
+            managerSearch: '',
+            managerSort: 'nonsense',
+            catalog: { studio: [chan('studio:2', 'Bravo'), chan('studio:1', 'Alpha')] },
+            allChannels: []
+        });
+        expect(sel.catalogRows(s2).map((r) => r.channel.name)).toEqual(['Alpha', 'Bravo']);
     });
 
     it('defaults the catalogue source to the one being browsed', () => {
@@ -319,21 +406,28 @@ describe('guide navigation selectors', () => {
 
     it('files a non-alphabetic name under #', () => {
         const s = navState({ allChannels: [chan('studio:9', '3D Available')] });
-        expect(sel.availableLetters(s)).toEqual(['#']);
+        expect(sel.groupLetters(s, 'studio')).toEqual(['#']);
     });
 
-    it('finds the first visible channel for a letter', () => {
-        expect(sel.firstChannelForLetter(navState(), 'B')).toBe('studio:2');
-        expect(sel.firstChannelForLetter(navState(), 'A')).toBe('studio:1');
+    it('finds the first channel in the group for a letter', () => {
+        expect(sel.firstChannelForLetterInGroup(navState(), 'studio', 'B')).toBe('studio:2');
+        expect(sel.firstChannelForLetterInGroup(navState(), 'studio', 'A')).toBe('studio:1');
     });
 
-    it('returns null when no channel starts with that letter', () => {
-        expect(sel.firstChannelForLetter(navState(), 'Z')).toBeNull();
+    it('stays inside its own group', () => {
+        // 'Beach' is a tag; jumping to B in the studios must not reach it.
+        expect(sel.firstChannelForLetterInGroup(navState(), 'tag', 'B')).toBe('tag:1');
+        expect(sel.firstChannelForLetterInGroup(navState(), 'studio', 'B')).toBe('studio:2');
+    });
+
+    it('returns null when no channel in the group starts with that letter', () => {
+        expect(sel.firstChannelForLetterInGroup(navState(), 'studio', 'Z')).toBeNull();
+        expect(sel.firstChannelForLetterInGroup(navState(), 'nope', 'A')).toBeNull();
     });
 
     it('finds a non-alphabetic channel under #', () => {
-        const s = navState({ channels: [chan('tag:9', '3D Available', 'tag')] });
-        expect(sel.firstChannelForLetter(s, '#')).toBe('tag:9');
+        const s = navState({ allChannels: [chan('tag:9', '3D Available', 'tag')] });
+        expect(sel.firstChannelForLetterInGroup(s, 'tag', '#')).toBe('tag:9');
     });
 
     it('exposes player and layout state', () => {

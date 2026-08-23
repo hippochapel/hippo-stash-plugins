@@ -179,7 +179,7 @@ export function applyPrefs(channels, prefs) {
 
 const byName = (a, b) => a.name.localeCompare(b.name);
 
-const COMPARATORS = {
+export const COMPARATORS = {
     name: byName,
     // Most-stocked first; a saved filter has no count and sorts last.
     sceneCount: (a, b) => (b.sceneCount ?? -1) - (a.sceneCount ?? -1) || byName(a, b)

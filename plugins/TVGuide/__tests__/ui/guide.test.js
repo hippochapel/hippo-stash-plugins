@@ -59,7 +59,6 @@ function mount(overrides = {}) {
     state.channelGroups = groupChannels(state.allChannels, {
         prefs: state.prefs,
         pinOrder: state.pinOrder,
-        sort: state.sort,
         sourceOrder: KNOWN_SOURCES,
         collapsed: state.collapsedGroups
     });
@@ -174,109 +173,131 @@ describe('the now-line', () => {
     });
 });
 
-describe('the type bar', () => {
-    it('offers All plus a button per type that has channels', () => {
-        const { grid } = mount();
-        const labels = [...grid.element.querySelectorAll('.tvguide-typebutton')].map((b) => b.textContent);
-        expect(labels).toEqual(['All', 'Studios', 'Tags']);
-    });
-
-    it('leaves out a type with no channels, since it is not a mode you can be in', () => {
-        const { grid } = mount();
-        const labels = [...grid.element.querySelectorAll('.tvguide-typebutton')].map((b) => b.textContent);
-        expect(labels).not.toContain('Models');
-        expect(labels).not.toContain('Groups');
-    });
-
-    it('hides the bar entirely when there is only one type', () => {
-        const { grid } = mount({ allChannels: [chan('studio:1', 'Alpha')] });
-        expect(grid.element.querySelector('.tvguide-typebar').hidden).toBe(true);
-    });
-
-    it('jumps to a group as well as filtering to it', () => {
-        const { grid } = mount();
-        const header = grid.element.querySelector('.tvguide-group[data-group="tag"]');
-        header.scrollIntoView = jest.fn();
-
-        [...grid.element.querySelectorAll('.tvguide-typebutton')]
-            .find((b) => b.textContent === 'Tags')
-            .click();
-
-        // Filtering leaves a single group, so re-find it after the rebuild.
-        const after = grid.element.querySelector('.tvguide-group[data-group="tag"]');
-        expect(after).not.toBeNull();
-    });
-
-    it('narrows the guide to one type', () => {
-        const { store, grid } = mount();
-        [...grid.element.querySelectorAll('.tvguide-typebutton')]
-            .find((b) => b.textContent === 'Tags')
-            .click();
-
-        expect(store.getState().typeFilter).toBe('tag');
-        expect(rows(grid)).toEqual(['tag:1']);
-    });
-});
-
 describe('the A-Z rail', () => {
-    it('offers a letter per initial present', () => {
+    /**
+     * jsdom lays nothing out, so give the grid a geometry to scroll through.
+     * Without it every `offsetTop` is 0 and scrolling cannot be observed.
+     */
+    function layOut(grid, rowHeight = 76) {
+        const scroll = grid.element.querySelector('.tvguide-grid-scroll');
+        Object.defineProperty(scroll, 'clientHeight', { value: 300, configurable: true });
+
+        const nodes = grid.element.querySelectorAll('.tvguide-group, .tvguide-row');
+        nodes.forEach((node, index) => {
+            Object.defineProperty(node, 'offsetTop', { value: index * rowHeight, configurable: true });
+            Object.defineProperty(node, 'offsetHeight', { value: rowHeight, configurable: true });
+        });
+
+        // Let the grid notice the geometry it now has.
+        scroll.dispatchEvent(new Event('scroll'));
+        return scroll;
+    }
+
+    const railLetters = (grid) =>
+        [...grid.element.querySelectorAll('.tvguide-rail-letter')].map((b) => b.textContent);
+
+    it('offers a letter per initial present in the group being scrolled', () => {
         const { grid } = mount();
-        const letters = [...grid.element.querySelectorAll('.tvguide-rail-letter')].map((b) => b.textContent);
-        expect(letters).toEqual(['A', 'B']);
+        layOut(grid);
+        // Scrolled to the top, so the rail belongs to the first group.
+        expect(railLetters(grid)).toEqual(['A', 'B']);
     });
 
-    it('switches to name sort when a letter is used', () => {
-        // A letter has no meaning in any other order.
-        const store = createStore({
-            initialState: {
-                ...createInitialState(),
-                sort: 'sceneCount',
-                allChannels: [chan('studio:1', 'Alpha')],
-                channels: [chan('studio:1', 'Alpha')]
-            }
-        });
-        const onJump = jest.fn();
-        const rail = createChannelRail({ store, onJump });
-        rail.render(store.getState());
+    it('follows the scroll into the next group', () => {
+        // The guide is always grouped, so a global rail would offer letters that
+        // throw you out of the section you are reading.
+        const { store, grid } = mount();
+        const scroll = layOut(grid);
 
-        rail.element.querySelector('.tvguide-rail-letter').click();
+        // Past the studio header and its two rows, into the tag group.
+        scroll.scrollTop = 76 * 3;
+        scroll.dispatchEvent(new Event('scroll'));
 
-        expect(store.getState().sort).toBe('name');
-        expect(onJump).toHaveBeenCalledWith('studio:1');
+        expect(railLetters(grid)).toEqual(['B']);
+        expect(store.getState().channels.map((c) => c.id)).toContain('tag:1');
     });
 
     it('scrolls the guide to the first channel for that letter', () => {
-        // The rail-to-grid path was never exercised: the unit test only checked
-        // that onJump fired.
         const { grid } = mount();
-        const scrolled = [];
+        const scroll = layOut(grid);
+
+        [...grid.element.querySelectorAll('.tvguide-rail-letter')]
+            .find((b) => b.textContent === 'B')
+            .click();
+
+        // studio:2 is the third laid-out node (header, Alpha, Bravo), centred
+        // in a 300px viewport.
+        expect(scroll.scrollTop).toBe(76 * 2 - (300 - 76) / 2);
+    });
+
+    it('scrolls its own container and nothing above it', () => {
+        // `scrollIntoView` walks every ancestor scroll container, and in theater
+        // mode the overlay is one of them -- so a letter jump used to drag the
+        // player off the top of the screen.
+        const { grid } = mount();
+        layOut(grid);
         for (const row of grid.element.querySelectorAll('.tvguide-row')) {
-            row.scrollIntoView = () => scrolled.push(row.dataset.channelId);
+            row.scrollIntoView = jest.fn(() => {
+                throw new Error('scrollIntoView must not be used inside the grid');
+            });
         }
 
-        const letters = [...grid.element.querySelectorAll('.tvguide-rail-letter')];
-        letters.find((b) => b.textContent === 'B').click();
-
-        // First channel whose name starts with B, in the order shown.
-        expect(scrolled).toEqual(['studio:2']);
+        [...grid.element.querySelectorAll('.tvguide-rail-letter')]
+            .find((b) => b.textContent === 'B')
+            .click();
     });
 
-    it('spreads the letters down the rail rather than bunching them', () => {
+    it('leaves the guide order alone', () => {
+        // The rail used to force the sort back to Name, which rebuilt every row
+        // out from under the jump it was about to make. The guide is always
+        // alphabetical now, so there is nothing to switch.
+        const { store, grid } = mount();
+        layOut(grid);
+        const before = store.getState().channels;
+
+        [...grid.element.querySelectorAll('.tvguide-rail-letter')]
+            .find((b) => b.textContent === 'B')
+            .click();
+
+        expect(store.getState().channels).toBe(before);
+    });
+
+    it('is scrollable rather than clipping the tail of the alphabet', () => {
         const { grid } = mount();
         const rail = grid.element.querySelector('.tvguide-rail');
-        expect(rail.querySelectorAll('.tvguide-rail-letter').length).toBeGreaterThan(1);
-        // Letters are buttons that grow to fill, not fixed-height text.
         expect(rail.parentElement.className).toContain('tvguide-grid-main');
+        expect(rail.getAttribute('aria-orientation')).toBe('vertical');
     });
 
-    it('does not jump when no channel starts with that letter', () => {
+    it('offers nothing when there is no group to jump within', () => {
         const store = createStore({
             initialState: { ...createInitialState(), allChannels: [], channels: [] }
         });
         const onJump = jest.fn();
         const rail = createChannelRail({ store, onJump });
-        rail.render(store.getState());
+        rail.render(store.getState(), null);
         expect(rail.element.querySelectorAll('.tvguide-rail-letter')).toHaveLength(0);
+        expect(onJump).not.toHaveBeenCalled();
+    });
+
+    it('does not jump to a letter no channel in the group starts with', () => {
+        const store = createStore({
+            initialState: {
+                ...createInitialState(),
+                allChannels: [chan('studio:1', 'Alpha')],
+                channelGroups: [
+                    { key: 'studio', source: 'studio', channels: [chan('studio:1', 'Alpha')], collapsed: false, count: 1 }
+                ]
+            }
+        });
+        const onJump = jest.fn();
+        const rail = createChannelRail({ store, onJump });
+        rail.render(store.getState(), 'studio');
+
+        // Rewrite the only letter's target out from under it.
+        store.getState().channelGroups[0].channels = [];
+        rail.element.querySelector('.tvguide-rail-letter').click();
+
         expect(onJump).not.toHaveBeenCalled();
     });
 });
@@ -369,6 +390,40 @@ describe('leaving the grid', () => {
 
         expect(store.getState().focus.source).toBe('live');
         expect(store.getState().focus.channelId).toBe('studio:1');
+    });
+
+    it('still reverts after the grid has re-adopted focus', async () => {
+        // The bug: hovering set `source: 'hover'`, then the grid's own
+        // `adoptFocus` focused that block a microtask later, whose `onfocus`
+        // rewrote the source to 'keyboard' -- after which leaving the grid did
+        // nothing and the details stayed on whatever the mouse last passed over.
+        const { store, grid } = mount();
+        const blocks = grid.element.querySelectorAll('[data-channel-id="studio:1"] .tvguide-block');
+        const future = blocks[blocks.length - 1];
+
+        future.dispatchEvent(new MouseEvent('mouseenter'));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(store.getState().focus.source).toBe('hover');
+
+        grid.element.querySelector('.tvguide-grid-body').dispatchEvent(new MouseEvent('mouseleave'));
+
+        expect(store.getState().focus.source).toBe('live');
+    });
+
+    it('still records a real keyboard focus', async () => {
+        // The guard must only cover the grid's own focus calls -- tabbing to a
+        // block by hand is still keyboard focus and must survive the mouse
+        // leaving.
+        const { store, grid } = mount();
+        const blocks = grid.element.querySelectorAll('[data-channel-id="studio:1"] .tvguide-block');
+        const future = blocks[blocks.length - 1];
+
+        future.dispatchEvent(new FocusEvent('focus'));
+        await Promise.resolve();
+
+        expect(store.getState().focus.source).toBe('keyboard');
     });
 
     it('leaves a clicked preview alone', () => {

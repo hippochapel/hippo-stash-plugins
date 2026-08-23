@@ -113,6 +113,12 @@ body.stash-tvguide-active {
     color: var(--tvguide-text-dim);
 }
 
+.tvguide-watch {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    margin: 10px 0;
+}
+
 .tvguide-banner-details {
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -178,10 +184,17 @@ body.stash-tvguide-active {
 /* ---------- toolbar ---------- */
 
 .tvguide-topbar {
+    /* `flex: 0 0 auto` is load-bearing. This is a flex item in a column whose
+       sibling grows with the channel count, and its own children scroll -- so
+       with the default shrink factor it was squeezed toward nothing as soon as
+       a group was expanded. */
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 6px 10px;
+    border-top: 1px solid var(--tvguide-border);
     border-bottom: 1px solid var(--tvguide-border);
     background: var(--tvguide-surface);
 }
@@ -244,6 +257,21 @@ body.stash-tvguide-active {
     font-size: 15px;
 }
 
+/* In a channel row the badge *is* the channel: it should fill the cell and sit
+   on the row's own background, not float in a grey square of its own. */
+.tvguide-row-head .tvguide-logo-button {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+}
+
+.tvguide-row-head .tvguide-logo {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    background: none;
+}
+
 /* ---------- grid ---------- */
 
 .tvguide-stage {
@@ -259,6 +287,7 @@ body.stash-tvguide-active {
 }
 
 .tvguide-grid-head {
+    flex: 0 0 auto;
     display: flex;
     border-bottom: 1px solid var(--tvguide-border);
 }
@@ -764,11 +793,12 @@ body.stash-tvguide-active {
 
 /* ---------- guide chrome: type bar, rail, resizer, groups ---------- */
 
+/* Part of the toolbar now, not a bar of its own. */
 .tvguide-typebar {
     display: flex;
+    flex: 0 1 auto;
     gap: 6px;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--tvguide-border);
+    min-width: 0;
     overflow-x: auto;
     touch-action: pan-x;
 }
@@ -785,13 +815,46 @@ body.stash-tvguide-active {
     cursor: not-allowed;
 }
 
-.tvguide-search {
+.tvguide-searchbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 200px;
     min-width: 140px;
-    max-width: 220px;
-    padding: 5px 10px;
+    max-width: 320px;
+    padding: 0 8px;
     border: 1px solid var(--tvguide-border);
     border-radius: 4px;
     background: var(--tvguide-surface-2);
+}
+
+.tvguide-searchbox:focus-within { border-color: var(--tvguide-accent); }
+
+.tvguide-search-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--tvguide-text-dim);
+}
+
+.tvguide-search-clear {
+    flex: 0 0 auto;
+    min-height: 0 !important;
+    padding: 0 4px !important;
+    border: none !important;
+    background: none !important;
+    color: var(--tvguide-text-dim);
+    font-size: 16px;
+    line-height: 1;
+}
+
+.tvguide-search-clear[hidden] { display: none; }
+
+.tvguide-search {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 0;
+    border: none;
+    background: none;
     color: var(--tvguide-text);
 }
 
@@ -817,16 +880,23 @@ body.stash-tvguide-active {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    /* Spread down the full height rather than bunching at the top. */
-    justify-content: space-evenly;
+    /* Scrollable and top-aligned: spreading the letters over a fixed height
+       with `overflow: hidden` simply cut the tail of the alphabet off. */
+    justify-content: flex-start;
     padding: 4px 0;
     border-right: 1px solid var(--tvguide-border);
     background: var(--tvguide-surface);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
 }
 
+.tvguide-rail::-webkit-scrollbar { display: none; }
+
 .tvguide-rail-letter {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    min-height: 15px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -874,6 +944,13 @@ body.stash-tvguide-active {
 }
 
 .tvguide-group-count { color: var(--tvguide-text-dim); font-weight: 400; }
+
+.tvguide-grid-empty,
+.tvguide-list-empty {
+    padding: 24px 16px;
+    margin: 0;
+    color: var(--tvguide-text-dim);
+}
 
 /* ---------- rows ---------- */
 
@@ -981,7 +1058,6 @@ body.stash-tvguide-active {
 .tvguide-player-spacer { flex: 1 1 auto; }
 
 .tvguide-player-button,
-.tvguide-watch,
 .tvguide-back-to-live {
     min-height: 26px !important;
     padding: 2px 8px !important;

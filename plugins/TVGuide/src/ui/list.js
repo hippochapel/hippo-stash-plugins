@@ -57,6 +57,13 @@ export function createList({ store, onRowVisible }) {
     };
 
     function build(state) {
+        // A filter that matched nothing needs saying; an empty lineup is already
+        // reported by the toolbar status.
+        if (state.channels.length === 0 && sel.isFilteredEmpty(state)) {
+            replaceChildren(root, el('p', { class: 'tvguide-list-empty' }, 'No channels match.'));
+            return;
+        }
+
         replaceChildren(
             root,
             state.channels.map((channel) => {

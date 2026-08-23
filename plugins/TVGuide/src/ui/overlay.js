@@ -9,6 +9,8 @@
 
 import { el, replaceChildren } from './dom.js';
 import { Events } from '../state/actions.js';
+import { SOURCE_LABELS } from '../domain/lineup.js';
+import { setIcon } from './icons.js';
 import * as sel from '../state/selectors.js';
 import { createBanner } from './banner.js';
 import { createGrid } from './grid.js';
@@ -35,7 +37,7 @@ const SHORTCUTS = [
 ];
 
 export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisible }) {
-    const banner = createBanner();
+    const banner = createBanner({ store });
     const manager = createManager({ store });
     const grid = createGrid({ store, onRowVisible, touchGuard });
     const list = createList({ store, onRowVisible });
@@ -62,10 +64,41 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     const guideSearch = el('input', {
         type: 'search',
         class: 'tvguide-search',
-        'aria-label': 'Filter channels',
-        placeholder: 'Filter channels…',
+        'aria-label': 'Search channels',
+        placeholder: 'Search channels…',
         oninput: (e) => store.dispatch({ type: Events.GUIDE_SEARCH, query: e.target.value })
     });
+
+    const searchClear = el('button', {
+        class: 'tvguide-search-clear',
+        type: 'button',
+        hidden: true,
+        'aria-label': 'Clear search',
+        text: '\u00d7',
+        onclick: () => {
+            store.dispatch({ type: Events.GUIDE_SEARCH, query: '' });
+            guideSearch.focus();
+        }
+    });
+
+    const searchBox = el(
+        'div',
+        { class: 'tvguide-searchbox' },
+        el('span', { class: 'tvguide-search-icon', 'aria-hidden': 'true' }),
+        guideSearch,
+        searchClear
+    );
+    setIcon(searchBox.firstChild, 'search');
+
+    // The type chips are part of the toolbar rather than a bar of their own:
+    // two stacked strips of channel controls read as two unrelated things, and
+    // the lower one was being squeezed to nothing by the guide below it.
+    const typeBar = el('div', {
+        class: 'tvguide-typebar',
+        role: 'toolbar',
+        'aria-label': 'Filter channels by type'
+    });
+
     const stage = el('div', { class: 'tvguide-stage' });
 
     const helpPanel = el(
@@ -82,6 +115,38 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         )
     );
 
+    const topbar = el(
+        'div',
+        { class: 'tvguide-topbar' },
+        timeControls,
+        searchBox,
+        typeBar,
+        el('button', {
+            class: 'tvguide-jump',
+            type: 'button',
+            text: 'Current',
+            'aria-label': 'Jump to the channel playing now',
+            onclick: () => {
+                const { tunedChannelId } = store.getState();
+                if (tunedChannelId) grid.scrollChannelIntoView(tunedChannelId);
+            }
+        }),
+        el('button', {
+            class: 'tvguide-manage',
+            type: 'button',
+            text: 'Channels',
+            onclick: () => store.dispatch({ type: Events.MANAGER_OPEN })
+        }),
+        status,
+        el('button', {
+            class: 'tvguide-close',
+            type: 'button',
+            'aria-label': 'Close TV Guide',
+            text: '\u00d7',
+            onclick: () => close()
+        })
+    );
+
     const root = el(
         'div',
         {
@@ -90,41 +155,11 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             'aria-modal': 'true',
             'aria-label': 'TV Guide'
         },
-        // Every control lives in one bar at the very top. The close button used
-        // to sit over the banner text on desktop and below the scene details on
-        // mobile; here it is simply the last thing in the bar, at the top on
-        // both.
-        el(
-            'div',
-            { class: 'tvguide-topbar' },
-            timeControls,
-            guideSearch,
-            el('button', {
-                class: 'tvguide-jump',
-                type: 'button',
-                text: 'Current',
-                'aria-label': 'Jump to the channel playing now',
-                onclick: () => {
-                    const { tunedChannelId } = store.getState();
-                    if (tunedChannelId) grid.scrollChannelIntoView(tunedChannelId);
-                }
-            }),
-            el('button', {
-                class: 'tvguide-manage',
-                type: 'button',
-                text: 'Channels',
-                onclick: () => store.dispatch({ type: Events.MANAGER_OPEN })
-            }),
-            status,
-            el('button', {
-                class: 'tvguide-close',
-                type: 'button',
-                'aria-label': 'Close TV Guide',
-                text: '\u00d7',
-                onclick: () => close()
-            })
-        ),
+        // Details first, then the single toolbar that acts on the channels
+        // below it. The controls used to sit above the details, which put the
+        // channel chrome further from the channels than the scene blurb was.
         el('header', { class: 'tvguide-header' }, banner.element, player.element),
+        topbar,
         stage,
         manager.element,
         helpPanel,
@@ -135,6 +170,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     let detachTouch = null;
     let mountedLayout = null;
     let lockedScrollY = 0;
+    let renderedMode = null;
 
     function panButton(label, ariaLabel, onclick) {
         return el('button', { class: 'tvguide-pan', type: 'button', 'aria-label': ariaLabel, onclick }, label);
@@ -200,6 +236,14 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             mount();
             root.classList.toggle('is-theater', state.playerMode === 'theater');
 
+            // Theater makes the overlay itself scrollable, and it inherits
+            // whatever the corner layout had scrolled to -- which put the guide
+            // on screen and the newly-enlarged player above it.
+            if (state.playerMode !== renderedMode) {
+                if (state.playerMode === 'theater') root.scrollTop = 0;
+                renderedMode = state.playerMode;
+            }
+
             // Grid and list are two renderers over one state; only the one in
             // use is in the DOM, so neither pays for the other.
             const view = sel.isGridLayout(state) ? grid : list;
@@ -210,6 +254,8 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
 
             timeControls.hidden = !sel.isGridLayout(state);
             if (guideSearch.value !== state.guideSearch) guideSearch.value = state.guideSearch;
+            searchClear.hidden = state.guideSearch === '';
+            renderTypeBar(state);
 
             banner.render(state);
             view.render(state);
@@ -223,9 +269,50 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         destroy() {
             grid.destroy();
             list.destroy();
+            player.destroy();
             unmount();
         }
     };
+
+    /**
+     * A chip per source type that actually has channels.
+     *
+     * A type you have no channels for is not a mode you can be in, so it is
+     * left out rather than shown greyed.
+     */
+    function renderTypeBar(state) {
+        const types = sel.availableTypes(state);
+        const active = state.typeFilter;
+
+        typeBar.hidden = types.length < 2;
+        if (typeBar.hidden) {
+            replaceChildren(typeBar);
+            return;
+        }
+
+        replaceChildren(
+            typeBar,
+            [['all', 'All'], ...types.map((t) => [t, SOURCE_LABELS[t] || t])].map(([value, label]) =>
+                el(
+                    'button',
+                    {
+                        class: 'tvguide-typebutton',
+                        type: 'button',
+                        'aria-pressed': active === value ? 'true' : 'false',
+                        onclick: () => {
+                            store.dispatch({ type: Events.SET_TYPE_FILTER, typeFilter: value });
+                            // Also jump there, so the chip navigates when you
+                            // are already showing everything.
+                            if (value !== 'all' && sel.isGridLayout(store.getState())) {
+                                grid.scrollGroupIntoView(value);
+                            }
+                        }
+                    },
+                    label
+                )
+            )
+        );
+    }
 
     function renderStatus(state) {
         if (sel.isLoading(state)) {

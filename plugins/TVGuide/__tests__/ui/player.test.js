@@ -112,14 +112,12 @@ describe('controls', () => {
         expect(store.getState().playerMode).toBe('corner');
     });
 
-    it('keeps Watch as a separate action that leaves for the scene page', () => {
-        const effects = [];
-        const { store, player } = mount();
-        store.subscribe(() => {});
-        q(player, '.tvguide-watch').click();
-        // EXPAND is the navigate-away event; it is not a player mode.
-        expect(store.getState().playerMode).toBe('corner');
-        expect(effects).toEqual([]);
+    it('leaves Watch to the scene details', () => {
+        // It used to sit here and always meant "the channel that is tuned", so
+        // previewing something and pressing it opened a different scene from
+        // the one on screen.
+        const { player } = mount();
+        expect(q(player, '.tvguide-watch')).toBeNull();
     });
 
     it('uses SVG icons rather than emoji', () => {
@@ -129,6 +127,19 @@ describe('controls', () => {
             // No emoji or glyph text left behind beside the icon.
             expect(q(player, cls).textContent).toBe('');
         }
+    });
+
+    it('leaves an unchanged icon alone', () => {
+        // `render` runs every second, and these buttons are inside the element
+        // that goes fullscreen. Tearing an SVG out of the fullscreen subtree
+        // once a tick is the kind of churn that drops fullscreen.
+        const { store, player } = mount();
+        const before = q(player, '.tvguide-play svg');
+
+        store.dispatch({ type: Events.TICK, nowMs: NOON + 1000 });
+        store.dispatch({ type: Events.TICK, nowMs: NOON + 2000 });
+
+        expect(q(player, '.tvguide-play svg')).toBe(before);
     });
 
     it('swaps the icon when state changes', () => {
@@ -142,8 +153,39 @@ describe('controls', () => {
 
     it('keeps words on the wider controls', () => {
         const { player } = mount();
-        expect(q(player, '.tvguide-watch').textContent).toBe('Watch');
         expect(q(player, '.tvguide-back-to-live').textContent).toBe('Back to live');
+    });
+
+    it('freezes the readout while paused', () => {
+        // The readout is schedule time, not video time, so it used to run on
+        // while the picture stood still.
+        const { store, player } = mount();
+        const times = () => q(player, '.tvguide-player-times').textContent;
+
+        store.dispatch({ type: Events.TICK, nowMs: NOON + 5 * 60000 });
+        const running = times();
+
+        store.dispatch({ type: Events.SET_VIEWER_PAUSED, paused: true });
+        const atPause = times();
+        expect(atPause).toBe(running);
+
+        store.dispatch({ type: Events.TICK, nowMs: NOON + 9 * 60000 });
+        expect(times()).toBe(atPause);
+    });
+
+    it('catches back up to live when unpaused', () => {
+        // Resuming re-syncs the stream to live, so the readout must jump with
+        // it rather than carrying on from the pause point.
+        const { store, player } = mount();
+        const times = () => q(player, '.tvguide-player-times').textContent;
+
+        store.dispatch({ type: Events.SET_VIEWER_PAUSED, paused: true });
+        const atPause = times();
+
+        store.dispatch({ type: Events.TICK, nowMs: NOON + 9 * 60000 });
+        store.dispatch({ type: Events.SET_VIEWER_PAUSED, paused: false });
+
+        expect(times()).not.toBe(atPause);
     });
 
     it('labels every control for assistive tech', () => {
