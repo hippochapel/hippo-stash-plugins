@@ -2,7 +2,7 @@ import studio from '../../src/domain/providers/studio.js';
 import tag from '../../src/domain/providers/tag.js';
 import group from '../../src/domain/providers/group.js';
 import savedFilter from '../../src/domain/providers/savedFilter.js';
-import { PROVIDERS, resolveLineup } from '../../src/domain/providers/index.js';
+import { PROVIDERS, resolveLineup, fetchCatalog } from '../../src/domain/providers/index.js';
 import { KNOWN_SOURCES } from '../../src/domain/lineup.js';
 
 const studioRows = (rows) => async () => ({ findStudios: { studios: rows } });
@@ -214,5 +214,56 @@ describe('resolveLineup', () => {
 
     it('returns nothing for an empty lineup', async () => {
         expect(await resolveLineup([], gql)).toEqual({ channels: [], errors: [] });
+    });
+});
+
+describe('fetchCatalog', () => {
+    const gql = async (query) => {
+        if (query.includes('findStudios')) {
+            return { findStudios: { studios: [{ id: '1', name: 'S1', image_path: null, scene_count: 2 }] } };
+        }
+        if (query.includes('findTags')) {
+            return { findTags: { tags: [{ id: '1', name: 'T1', image_path: null, scene_count: 1 }] } };
+        }
+        if (query.includes('findGroups')) {
+            return { findGroups: { groups: [{ id: '1', name: 'G1', front_image_path: null, scene_count: 1 }] } };
+        }
+        return { findSavedFilters: [{ id: '1', name: 'F1', object_filter: { organized: true } }] };
+    };
+
+    it('returns every source keyed by name', async () => {
+        const { catalog } = await fetchCatalog(gql);
+        expect(Object.keys(catalog).sort()).toEqual([...KNOWN_SOURCES].sort());
+        expect(catalog.studio[0].id).toBe('studio:1');
+        expect(catalog.savedFilter[0].id).toBe('savedFilter:1');
+    });
+
+    it('ignores lineup thresholds, so nothing is pre-filtered out of the picker', async () => {
+        const seen = jest.fn(gql);
+        await fetchCatalog(seen, ['studio']);
+        // No scene_count filter: the manager must be able to offer every studio.
+        expect(seen.mock.calls[0][1].f).toBeNull();
+    });
+
+    it('can be limited to specific sources', async () => {
+        const { catalog } = await fetchCatalog(gql, ['studio']);
+        expect(Object.keys(catalog)).toEqual(['studio']);
+    });
+
+    it('reports a failing source without losing the others', async () => {
+        const flaky = async (query) => {
+            if (query.includes('findTags')) throw new Error('tag index missing');
+            return gql(query);
+        };
+        const { catalog, errors } = await fetchCatalog(flaky, ['studio', 'tag']);
+        expect(catalog.studio).toHaveLength(1);
+        expect(catalog.tag).toEqual([]);
+        expect(errors).toEqual([{ source: 'tag', message: 'tag index missing' }]);
+    });
+
+    it('ignores an unknown source', async () => {
+        const { catalog, errors } = await fetchCatalog(gql, ['nonsense']);
+        expect(catalog.nonsense).toEqual([]);
+        expect(errors).toEqual([]);
     });
 });

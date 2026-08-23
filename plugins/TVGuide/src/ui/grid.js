@@ -52,7 +52,10 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
               )
             : null;
 
-    let renderedChannelIds = '';
+    // Includes name and badge, not just ids: renaming a channel or giving it a
+    // custom logo changes neither the id list nor the block set, so keying the
+    // rebuild on ids alone left the row header showing the old name.
+    let renderedRowSignature = '';
 
     return {
         element: root,
@@ -61,9 +64,9 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             renderTicks(state);
             renderNowLine(state);
 
-            const ids = state.channels.map((c) => c.id).join(',');
-            if (ids !== renderedChannelIds) {
-                renderedChannelIds = ids;
+            const signature = rowsSignature(state);
+            if (signature !== renderedRowSignature) {
+                renderedRowSignature = signature;
                 buildRows(state);
             } else {
                 updateRows(state);
@@ -74,6 +77,12 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             if (observer) observer.disconnect();
         }
     };
+
+    function rowsSignature(state) {
+        return state.channels
+            .map((c) => `${c.id}~${c.name}~${c.logo?.url || c.logo?.initials || ''}`)
+            .join(',');
+    }
 
     function renderTicks(state) {
         replaceChildren(

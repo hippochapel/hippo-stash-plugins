@@ -11,6 +11,7 @@ import { createClient } from './api/client.js';
 import { loadSettings } from './api/settings.js';
 import { createPoolCache } from './api/cache.js';
 import { parseLineup, serializeLineup, DEFAULT_LINEUP } from './domain/lineup.js';
+import { parsePrefs, DEFAULT_SORT, SORT_MODES } from './domain/channelPrefs.js';
 import { createStore } from './state/store.js';
 import { createEffectRunner } from './state/effects.js';
 import { createAnnouncer } from './ui/a11y.js';
@@ -72,7 +73,7 @@ export function start() {
         storage: window.localStorage,
         announce: (message) => announcer.announce(message),
         navigate: navigateToScene,
-        getLineup: readLineup
+        getLineup: () => store.getState().lineup
     });
 
     const store = createStore({ runEffect });
@@ -118,6 +119,14 @@ export function start() {
         seedLineup(settings);
 
         if (settings.guide_navbar_button) navbar.start();
+
+        const storedSort = readStored(STORAGE_KEYS.sort, DEFAULT_SORT);
+        store.dispatch({
+            type: Events.PREFS_LOADED,
+            prefs: parsePrefs(readStored(STORAGE_KEYS.prefs)),
+            sort: SORT_MODES.includes(storedSort) ? storedSort : DEFAULT_SORT,
+            lineup: readLineup()
+        });
 
         store.dispatch({
             type: Events.RESTORE,

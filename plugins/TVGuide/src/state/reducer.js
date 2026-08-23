@@ -11,11 +11,38 @@ import { Events, Effects, STORAGE_KEYS } from './actions.js';
 import { createInitialState, PoolStatus } from './initialState.js';
 import { buildDaySchedule, dayBucket, programAt } from '../domain/schedule.js';
 import { snapToStep, clampWindowStart, HALF_HOUR_MS } from '../domain/layout.js';
+import { visibleChannels, setPref, poolCapFor } from '../domain/channelPrefs.js';
 
 /** How far ahead of the current day panning is allowed to go. */
 const MAX_PAN_AHEAD_MS = 24 * 3600000;
 
 const windowMsOf = (state) => state.settings.guide_window_hours * 3600000;
+
+/**
+ * Recompute the visible channel list after anything that affects it.
+ *
+ * Kept in state rather than derived at render time because the reducer itself
+ * walks it: MOVE_FOCUS across channels has to agree with the on-screen order,
+ * or arrow-down lands on the wrong row.
+ *
+ * If the tuned or focused channel just became hidden, both fall back to the
+ * first channel still visible rather than pointing at nothing.
+ */
+function withVisibleChannels(state) {
+    const channels = visibleChannels(state.allChannels, state.prefs, state.sort);
+    const next = { ...state, channels };
+
+    const stillThere = (id) => channels.some((c) => c.id === id);
+
+    if (next.tunedChannelId && !stillThere(next.tunedChannelId)) {
+        next.tunedChannelId = channels[0]?.id || null;
+    }
+    if (next.focus && !stillThere(next.focus.channelId)) {
+        next.focus = channels[0] ? { channelId: channels[0].id, timeMs: state.nowMs } : null;
+    }
+
+    return next;
+}
 
 function scheduleFor(state, channelId) {
     return state.schedules[channelId] || null;
@@ -114,18 +141,19 @@ export function reduce(state, event) {
         }
 
         case Events.CHANNELS_LOADED: {
-            const next = {
+            const next = withVisibleChannels({
                 ...state,
-                channels: event.channels,
+                allChannels: event.channels,
                 channelsStatus: PoolStatus.READY,
                 // A successful load must clear a previous failure, or a stale
                 // error would sit in the status bar over working channels.
                 channelsError: null,
-                sourceErrors: event.errors || [],
-                tunedChannelId: state.tunedChannelId || event.channels[0]?.id || null
-            };
-            if (!next.focus && event.channels.length > 0) {
-                next.focus = { channelId: event.channels[0].id, timeMs: state.nowMs };
+                sourceErrors: event.errors || []
+            });
+
+            next.tunedChannelId = next.tunedChannelId || next.channels[0]?.id || null;
+            if (!next.focus && next.channels.length > 0) {
+                next.focus = { channelId: next.channels[0].id, timeMs: state.nowMs };
             }
             return { state: next, effects };
         }
@@ -152,7 +180,13 @@ export function reduce(state, event) {
                         [event.channelId]: { status: PoolStatus.LOADING, scenes: [], error: null }
                     }
                 },
-                effects: [Effects.fetchPool(channel.id, channel.sceneFilter)]
+                effects: [
+                    Effects.fetchPool(
+                        channel.id,
+                        channel.sceneFilter,
+                        poolCapFor(state.prefs, channel.id, state.settings.guide_pool_cap)
+                    )
+                ]
             };
         }
 
@@ -239,6 +273,99 @@ export function reduce(state, event) {
         case Events.LAYOUT_CHANGED:
             if (event.layout === state.layout) return { state, effects };
             return { state: { ...state, layout: event.layout }, effects };
+
+        case Events.PREFS_LOADED:
+            return {
+                state: withVisibleChannels({
+                    ...state,
+                    prefs: event.prefs,
+                    sort: event.sort || state.sort,
+                    lineup: event.lineup || state.lineup
+                }),
+                effects
+            };
+
+        case Events.SET_CHANNEL_PREF: {
+            const prefs = setPref(state.prefs, event.channelId, event.patch);
+            return {
+                state: withVisibleChannels({ ...state, prefs }),
+                effects: [Effects.persist(STORAGE_KEYS.prefs, JSON.stringify(prefs))]
+            };
+        }
+
+        case Events.TOGGLE_PIN: {
+            // pinnedAt doubles as the pin order, so pinning stamps the clock
+            // and unpinning clears it.
+            const pinned = Boolean(state.prefs[event.channelId]?.pinnedAt);
+            const prefs = setPref(state.prefs, event.channelId, {
+                pinnedAt: pinned ? null : event.nowMs || state.nowMs || 1
+            });
+            return {
+                state: withVisibleChannels({ ...state, prefs }),
+                effects: [Effects.persist(STORAGE_KEYS.prefs, JSON.stringify(prefs))]
+            };
+        }
+
+        case Events.TOGGLE_HIDDEN: {
+            const hidden = Boolean(state.prefs[event.channelId]?.hidden);
+            const prefs = setPref(state.prefs, event.channelId, { hidden: !hidden });
+            return {
+                state: withVisibleChannels({ ...state, prefs }),
+                effects: [Effects.persist(STORAGE_KEYS.prefs, JSON.stringify(prefs))]
+            };
+        }
+
+        case Events.SET_SORT:
+            if (event.sort === state.sort) return { state, effects };
+            return {
+                state: withVisibleChannels({ ...state, sort: event.sort }),
+                effects: [Effects.persist(STORAGE_KEYS.sort, event.sort)]
+            };
+
+        case Events.SET_LINEUP:
+            // Changing which sources are included means re-resolving from the
+            // server; prefs and schedules for surviving channels are untouched.
+            return {
+                state: { ...state, lineup: event.lineup, channelsStatus: PoolStatus.LOADING },
+                effects: [
+                    Effects.persist(STORAGE_KEYS.lineup, JSON.stringify(event.lineup)),
+                    Effects.reloadChannels()
+                ]
+            };
+
+        case Events.MANAGER_OPEN: {
+            const next = { ...state, managerOpen: true };
+            // The catalogue is thousands of rows on a large library, so it is
+            // fetched once, the first time the manager is actually opened.
+            if (state.catalogStatus === PoolStatus.IDLE) {
+                next.catalogStatus = PoolStatus.LOADING;
+                effects.push(Effects.loadCatalog());
+            }
+            return { state: next, effects };
+        }
+
+        case Events.MANAGER_CLOSE:
+            return { state: { ...state, managerOpen: false }, effects };
+
+        case Events.MANAGER_SEARCH:
+            return { state: { ...state, managerSearch: event.query }, effects };
+
+        case Events.CATALOG_LOADED:
+            return {
+                state: {
+                    ...state,
+                    catalog: event.catalog,
+                    catalogStatus: PoolStatus.READY,
+                    catalogError: null
+                },
+                effects
+            };
+
+        case Events.CATALOG_FAILED:
+            return {
+                state: { ...state, catalogStatus: PoolStatus.ERROR, catalogError: event.message },
+                effects
+            };
 
         case Events.SET_MUTED:
             return {

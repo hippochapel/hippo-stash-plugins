@@ -14,6 +14,7 @@ import { createBanner } from './banner.js';
 import { createGrid } from './grid.js';
 import { createList } from './list.js';
 import { trapFocus } from './a11y.js';
+import { createManager } from './manager.js';
 
 export const HASH = '#tvguide';
 export const BODY_CLASS = 'stash-tvguide-active';
@@ -27,12 +28,14 @@ const SHORTCUTS = [
     ['Enter', 'Watch in the corner viewer'],
     ['E', 'Open the scene at its live position'],
     ['M', 'Mute or unmute'],
+    ['C', 'Manage channels'],
     ['?', 'This help'],
     ['Esc', 'Close the guide']
 ];
 
 export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisible }) {
     const banner = createBanner();
+    const manager = createManager({ store });
     const grid = createGrid({ store, onRowVisible, touchGuard });
     const list = createList({ store, onRowVisible });
 
@@ -111,9 +114,16 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
                 onclick: () => store.dispatch({ type: Events.GO_TO_NOW })
             }),
             panButton('››', 'Pan forward', () => pan(1)),
+            el('button', {
+                class: 'tvguide-manage',
+                type: 'button',
+                text: 'Channels',
+                onclick: () => store.dispatch({ type: Events.MANAGER_OPEN })
+            }),
             status
         ),
         stage,
+        manager.element,
         helpPanel,
         announcer.element
     );
@@ -187,6 +197,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
 
             banner.render(state);
             view.render(state);
+            manager.render(state);
             renderViewerPanel(state);
             renderStatus(state);
         },

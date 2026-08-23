@@ -25,12 +25,32 @@ export const Events = {
     FOCUS_CELL: 'FOCUS_CELL',
     MOVE_FOCUS: 'MOVE_FOCUS',
     LAYOUT_CHANGED: 'LAYOUT_CHANGED',
-    SET_MUTED: 'SET_MUTED'
+    SET_MUTED: 'SET_MUTED',
+
+    // Channel manager
+    PREFS_LOADED: 'PREFS_LOADED',
+    SET_CHANNEL_PREF: 'SET_CHANNEL_PREF',
+    TOGGLE_PIN: 'TOGGLE_PIN',
+    TOGGLE_HIDDEN: 'TOGGLE_HIDDEN',
+    SET_SORT: 'SET_SORT',
+    SET_LINEUP: 'SET_LINEUP',
+    MANAGER_OPEN: 'MANAGER_OPEN',
+    MANAGER_CLOSE: 'MANAGER_CLOSE',
+    MANAGER_SEARCH: 'MANAGER_SEARCH',
+    CATALOG_LOADED: 'CATALOG_LOADED',
+    CATALOG_FAILED: 'CATALOG_FAILED'
 };
 
 export const Effects = {
     loadChannels: () => ({ type: 'loadChannels' }),
-    fetchPool: (channelId, sceneFilter) => ({ type: 'fetchPool', channelId, sceneFilter }),
+    fetchPool: (channelId, sceneFilter, poolCap) => ({
+        type: 'fetchPool',
+        channelId,
+        sceneFilter,
+        poolCap
+    }),
+    loadCatalog: () => ({ type: 'loadCatalog' }),
+    reloadChannels: () => ({ type: 'loadChannels' }),
     /** Point the viewer at whatever is live on this channel right now. */
     tuneViewer: (channelId, scene, offsetMs) => ({ type: 'tuneViewer', channelId, scene, offsetMs }),
     stopViewer: () => ({ type: 'stopViewer' }),
@@ -43,5 +63,7 @@ export const Effects = {
 export const STORAGE_KEYS = {
     tunedChannel: 'tvguide_last_channel',
     muted: 'tvguide_muted',
-    lineup: 'tvguide_lineup'
+    lineup: 'tvguide_lineup',
+    prefs: 'tvguide_channel_prefs',
+    sort: 'tvguide_sort'
 };

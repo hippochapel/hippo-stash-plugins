@@ -34,6 +34,7 @@ function readyState(overrides = {}) {
         dayKey: DAY_KEY,
         dayStartMs: DAY_START,
         windowStartMs: NOON,
+        allChannels: [channel('studio:1', 'One'), channel('studio:2', 'Two')],
         channels: [channel('studio:1', 'One'), channel('studio:2', 'Two')],
         channelsStatus: PoolStatus.READY,
         tunedChannelId: 'studio:1',
@@ -257,7 +258,12 @@ describe('POOL_REQUESTED', () => {
 
         expect(next.pools['studio:2'].status).toBe(PoolStatus.LOADING);
         expect(effects).toEqual([
-            { type: 'fetchPool', channelId: 'studio:2', sceneFilter: state.channels[1].sceneFilter }
+            {
+                type: 'fetchPool',
+                channelId: 'studio:2',
+                sceneFilter: state.channels[1].sceneFilter,
+                poolCap: state.settings.guide_pool_cap
+            }
         ]);
     });
 
@@ -566,5 +572,216 @@ describe('unknown events', () => {
         const { state: next, effects } = run(state, { type: 'NOT_A_REAL_EVENT' });
         expect(next).toBe(state);
         expect(effects).toEqual([]);
+    });
+});
+
+
+describe('channel manager', () => {
+    const managerState = (overrides = {}) => readyState(overrides);
+
+    describe('PREFS_LOADED', () => {
+        it('adopts stored prefs, sort and lineup', () => {
+            const { state } = run(managerState(), {
+                type: Events.PREFS_LOADED,
+                prefs: { 'studio:1': { name: 'Renamed' } },
+                sort: 'sceneCount',
+                lineup: [{ source: 'tag', minScenes: 3 }]
+            });
+            expect(state.sort).toBe('sceneCount');
+            expect(state.lineup).toEqual([{ source: 'tag', minScenes: 3 }]);
+            expect(state.channels.find((c) => c.id === 'studio:1').name).toBe('Renamed');
+        });
+
+        it('keeps the current sort and lineup when the event omits them', () => {
+            const { state } = run(managerState(), { type: Events.PREFS_LOADED, prefs: {} });
+            expect(state.sort).toBe('name');
+            expect(state.lineup).toEqual(managerState().lineup);
+        });
+    });
+
+    describe('renaming and hiding', () => {
+        it('renames a channel and persists it', () => {
+            const { state, effects } = run(managerState(), {
+                type: Events.SET_CHANNEL_PREF,
+                channelId: 'studio:1',
+                patch: { name: 'Short' }
+            });
+            expect(state.channels.find((c) => c.id === 'studio:1').name).toBe('Short');
+            expect(effects.find((e) => e.type === 'persist').key).toBe(STORAGE_KEYS.prefs);
+        });
+
+        it('leaves the raw channel untouched so the rename can be undone', () => {
+            const { state } = run(managerState(), {
+                type: Events.SET_CHANNEL_PREF,
+                channelId: 'studio:1',
+                patch: { name: 'Short' }
+            });
+            expect(state.allChannels.find((c) => c.id === 'studio:1').name).toBe('One');
+        });
+
+        it('hides a channel, removing it from the guide', () => {
+            const { state } = run(managerState(), { type: Events.TOGGLE_HIDDEN, channelId: 'studio:2' });
+            expect(state.channels.map((c) => c.id)).toEqual(['studio:1']);
+        });
+
+        it('unhides again', () => {
+            const hidden = run(managerState(), { type: Events.TOGGLE_HIDDEN, channelId: 'studio:2' }).state;
+            const { state } = run(hidden, { type: Events.TOGGLE_HIDDEN, channelId: 'studio:2' });
+            expect(state.channels.map((c) => c.id)).toEqual(['studio:1', 'studio:2']);
+        });
+
+        it('moves the tuned channel off one that was just hidden', () => {
+            const { state } = run(managerState({ tunedChannelId: 'studio:2' }), {
+                type: Events.TOGGLE_HIDDEN,
+                channelId: 'studio:2'
+            });
+            expect(state.tunedChannelId).toBe('studio:1');
+        });
+
+        it('moves focus off a channel that was just hidden', () => {
+            const { state } = run(
+                managerState({ focus: { channelId: 'studio:2', timeMs: NOON } }),
+                { type: Events.TOGGLE_HIDDEN, channelId: 'studio:2' }
+            );
+            expect(state.focus.channelId).toBe('studio:1');
+        });
+
+        it('copes with hiding the last visible channel', () => {
+            const single = managerState({ channels: [channel('studio:1', 'One')], allChannels: [channel('studio:1', 'One')] });
+            const { state } = run(single, { type: Events.TOGGLE_HIDDEN, channelId: 'studio:1' });
+            expect(state.channels).toEqual([]);
+            expect(state.tunedChannelId).toBeNull();
+            expect(state.focus).toBeNull();
+        });
+    });
+
+    describe('pinning', () => {
+        it('lifts a pinned channel to the top', () => {
+            const { state } = run(managerState(), {
+                type: Events.TOGGLE_PIN,
+                channelId: 'studio:2',
+                nowMs: 5000
+            });
+            expect(state.channels.map((c) => c.id)).toEqual(['studio:2', 'studio:1']);
+        });
+
+        it('unpins', () => {
+            const pinned = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2', nowMs: 5000 }).state;
+            const { state } = run(pinned, { type: Events.TOGGLE_PIN, channelId: 'studio:2' });
+            expect(state.channels.map((c) => c.id)).toEqual(['studio:1', 'studio:2']);
+            expect(state.prefs['studio:2']).toBeUndefined();
+        });
+
+        it('stamps the pin time from the clock when the event omits it', () => {
+            const { state } = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' });
+            expect(state.prefs['studio:2'].pinnedAt).toBe(NOON);
+        });
+
+        it('still records a pin order when the clock has not started', () => {
+            const { state } = run(managerState({ nowMs: 0 }), {
+                type: Events.TOGGLE_PIN,
+                channelId: 'studio:2'
+            });
+            expect(state.prefs['studio:2'].pinnedAt).toBe(1);
+        });
+
+        it('persists the change', () => {
+            const { effects } = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' });
+            expect(effects.find((e) => e.type === 'persist').key).toBe(STORAGE_KEYS.prefs);
+        });
+    });
+
+    describe('sorting', () => {
+        it('reorders the guide and persists the choice', () => {
+            const state = managerState();
+            state.allChannels = [
+                { ...channel('studio:1', 'One'), sceneCount: 5 },
+                { ...channel('studio:2', 'Two'), sceneCount: 90 }
+            ];
+            const { state: next, effects } = run(state, { type: Events.SET_SORT, sort: 'sceneCount' });
+            expect(next.channels.map((c) => c.id)).toEqual(['studio:2', 'studio:1']);
+            expect(effects).toContainEqual({ type: 'persist', key: STORAGE_KEYS.sort, value: 'sceneCount' });
+        });
+
+        it('ignores a change to the sort already in use', () => {
+            const state = managerState();
+            expect(run(state, { type: Events.SET_SORT, sort: 'name' }).state).toBe(state);
+        });
+    });
+
+    describe('lineup changes', () => {
+        it('persists the lineup and re-resolves channels from the server', () => {
+            const lineup = [{ source: 'tag', minScenes: 2 }];
+            const { state, effects } = run(managerState(), { type: Events.SET_LINEUP, lineup });
+
+            expect(state.lineup).toEqual(lineup);
+            expect(state.channelsStatus).toBe(PoolStatus.LOADING);
+            expect(effectTypes(effects)).toEqual(['persist', 'loadChannels']);
+        });
+    });
+
+    describe('the manager panel', () => {
+        it('fetches the catalogue the first time it opens', () => {
+            const { state, effects } = run(managerState(), { type: Events.MANAGER_OPEN });
+            expect(state.managerOpen).toBe(true);
+            expect(effectTypes(effects)).toEqual(['loadCatalog']);
+            expect(state.catalogStatus).toBe(PoolStatus.LOADING);
+        });
+
+        it('does not refetch the catalogue on a later open', () => {
+            const loaded = run(managerState(), { type: Events.CATALOG_LOADED, catalog: { studio: [] } }).state;
+            const { effects } = run(loaded, { type: Events.MANAGER_OPEN });
+            expect(effects).toEqual([]);
+        });
+
+        it('closes', () => {
+            const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
+            expect(run(open, { type: Events.MANAGER_CLOSE }).state.managerOpen).toBe(false);
+        });
+
+        it('records the search query', () => {
+            const { state } = run(managerState(), { type: Events.MANAGER_SEARCH, query: 'als' });
+            expect(state.managerSearch).toBe('als');
+        });
+
+        it('stores a loaded catalogue', () => {
+            const catalog = { studio: [channel('studio:9', 'Nine')] };
+            const { state } = run(managerState(), { type: Events.CATALOG_LOADED, catalog });
+            expect(state.catalog).toBe(catalog);
+            expect(state.catalogStatus).toBe(PoolStatus.READY);
+        });
+
+        it('records a catalogue failure', () => {
+            const { state } = run(managerState(), { type: Events.CATALOG_FAILED, message: 'offline' });
+            expect(state.catalogStatus).toBe(PoolStatus.ERROR);
+            expect(state.catalogError).toBe('offline');
+        });
+    });
+
+    describe('per-channel scene cap', () => {
+        it('overrides the global cap when fetching that channel\'s pool', () => {
+            const state = managerState({ pools: {}, prefs: { 'studio:2': { poolCap: 400 } } });
+            const { effects } = run(state, { type: Events.POOL_REQUESTED, channelId: 'studio:2' });
+            expect(effects[0].poolCap).toBe(400);
+        });
+
+        it('falls back to the global cap without an override', () => {
+            const state = managerState({ pools: {} });
+            const { effects } = run(state, { type: Events.POOL_REQUESTED, channelId: 'studio:2' });
+            expect(effects[0].poolCap).toBe(state.settings.guide_pool_cap);
+        });
+    });
+
+    describe('keyboard order follows the visible order', () => {
+        it('arrow-down moves to the next channel as displayed, not as resolved', () => {
+            // Pin the second channel so display order is the reverse of raw order.
+            const pinned = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2', nowMs: 5000 }).state;
+            expect(pinned.channels.map((c) => c.id)).toEqual(['studio:2', 'studio:1']);
+
+            const focused = { ...pinned, focus: { channelId: 'studio:2', timeMs: NOON } };
+            const { state } = run(focused, { type: Events.MOVE_FOCUS, axis: 'channel', delta: 1 });
+
+            expect(state.focus.channelId).toBe('studio:1');
+        });
     });
 });

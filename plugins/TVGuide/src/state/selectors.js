@@ -88,3 +88,46 @@ export const hasChannels = (state) => state.channels.length > 0;
 export const isLoading = (state) => state.channelsStatus === PoolStatus.LOADING;
 export const loadError = (state) => state.channelsError;
 export const sourceErrors = (state) => state.sourceErrors;
+
+// --- channel manager ---
+
+export const isManagerOpen = (state) => state.managerOpen;
+export const sortMode = (state) => state.sort;
+export const catalogStatus = (state) => state.catalogStatus;
+export const catalogError = (state) => state.catalogError;
+
+/** The rule entry for a source, if the lineup has one. */
+export function lineupRule(state, source) {
+    return state.lineup.find((entry) => entry.source === source && !entry.ids && !entry.names) || null;
+}
+
+/**
+ * Catalogue rows for one source, filtered by the search box.
+ *
+ * Search is client-side because the catalogue is already in memory and a
+ * library can hold hundreds of tags -- a round trip per keystroke would be
+ * slower and no more accurate.
+ */
+export function catalogRows(state, source) {
+    const rows = state.catalog?.[source] || [];
+    const query = state.managerSearch.trim().toLowerCase();
+    const filtered = query ? rows.filter((c) => c.name.toLowerCase().includes(query)) : rows;
+
+    const live = new Set(state.allChannels.map((c) => c.id));
+
+    return filtered.map((channel) => ({
+        channel,
+        // "In the guide" means resolved from the lineup, whether by a rule or
+        // by an explicit pick -- hiding is a separate axis.
+        included: live.has(channel.id),
+        pinned: Boolean(state.prefs[channel.id]?.pinnedAt),
+        hidden: Boolean(state.prefs[channel.id]?.hidden),
+        pref: state.prefs[channel.id] || null
+    }));
+}
+
+/** Explicitly-picked ids for a source, so the manager can toggle one off. */
+export function explicitIds(state, source) {
+    const entry = state.lineup.find((e) => e.source === source && Array.isArray(e.ids));
+    return entry ? entry.ids : [];
+}

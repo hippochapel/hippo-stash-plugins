@@ -6,7 +6,7 @@
  */
 
 import { Events } from './actions.js';
-import { resolveLineup } from '../domain/providers/index.js';
+import { resolveLineup, fetchCatalog } from '../domain/providers/index.js';
 import { fetchScenePool } from '../api/scenes.js';
 
 /** Concurrent pool fetches. Enough to fill a screen, few enough not to
@@ -21,6 +21,9 @@ export function createEffectRunner({
     announce,
     navigate,
     getLineup,
+    // Injected like every other dependency here, so the failure path is
+    // reachable from a test rather than being untestable defensive code.
+    fetchCatalogFn = fetchCatalog,
     maxConcurrent = MAX_CONCURRENT_POOL_FETCHES
 }) {
     let inFlight = 0;
@@ -59,6 +62,7 @@ export function createEffectRunner({
 
             case 'fetchPool': {
                 const { dayKey, settings } = getState();
+                const poolCap = effect.poolCap || settings.guide_pool_cap;
 
                 const cached = cache && cache.get(effect.channelId, dayKey);
                 if (cached) {
@@ -67,7 +71,7 @@ export function createEffectRunner({
                 }
 
                 schedule(() =>
-                    fetchScenePool(gql, effect.sceneFilter, settings.guide_pool_cap).then(
+                    fetchScenePool(gql, effect.sceneFilter, poolCap).then(
                         (scenes) => {
                             if (cache) cache.set(effect.channelId, dayKey, scenes);
                             dispatch({ type: Events.POOL_LOADED, channelId: effect.channelId, scenes });
@@ -82,6 +86,15 @@ export function createEffectRunner({
                 );
                 return;
             }
+
+            case 'loadCatalog':
+                Promise.resolve()
+                    .then(() => fetchCatalogFn(gql))
+                    .then(
+                        ({ catalog }) => dispatch({ type: Events.CATALOG_LOADED, catalog }),
+                        (error) => dispatch({ type: Events.CATALOG_FAILED, message: error.message })
+                    );
+                return;
 
             case 'tuneViewer':
                 if (viewer) viewer.tune(effect.scene, effect.offsetMs, getState().muted);

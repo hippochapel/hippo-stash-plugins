@@ -59,3 +59,38 @@ export async function resolveLineup(lineup, gql) {
 
     return { channels, errors };
 }
+
+/**
+ * Every channel each source could offer, ignoring lineup rules.
+ *
+ * This is what the channel manager browses -- you cannot pick a studio that
+ * the current threshold has already filtered out, so the catalogue deliberately
+ * asks for everything (`minScenes: 0`).
+ *
+ * Fetched once, lazily, when the manager first opens: on a large library this
+ * is thousands of rows, and the guide itself never needs them.
+ *
+ * @returns {Promise<{catalog: Object<string, Array>, errors: Array}>}
+ */
+export async function fetchCatalog(gql, sources = Object.keys(PROVIDERS)) {
+    const results = await Promise.all(
+        sources.map(async (source) => {
+            const provider = PROVIDERS[source];
+            if (!provider) return { source, channels: [], error: null };
+            try {
+                return { source, channels: await provider.listChannels({ source }, gql), error: null };
+            } catch (e) {
+                return { source, channels: [], error: { source, message: e.message } };
+            }
+        })
+    );
+
+    const catalog = {};
+    const errors = [];
+    for (const result of results) {
+        catalog[result.source] = result.channels;
+        if (result.error) errors.push(result.error);
+    }
+
+    return { catalog, errors };
+}

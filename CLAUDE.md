@@ -56,6 +56,10 @@ Non-obvious invariants:
 - **The `?start=` seek fallback shifts the stream's timeline.** Once it engages, the stream's `t=0` is the seek offset, so `streamBaseSeconds` must be subtracted from any comparison of `currentTime` against schedule time — otherwise drift correction re-seeks in a loop.
 - **The grid restyles on tick and only rebuilds on pan/pool/day change** (`track.dataset.signature`). Rebuilding every second would churn the DOM and throw away keyboard focus.
 - **DOM focus is only adopted when focus is already inside the grid**, so a background re-render cannot steal focus from another control.
+- **The grid's row rebuild is keyed on id + name + badge, not id alone.** A rename or custom logo changes neither the id list nor the block set, so keying on ids left the old name on screen.
+- **The visible channel list is state, not a selector.** `state.allChannels` is the raw resolved lineup; `state.channels` is the prefs-applied, sorted list, recomputed whenever channels/prefs/sort change. It has to be real state because `MOVE_FOCUS` walks it inside the reducer — derive it at render time and arrow-down lands on the wrong row.
+- **Lineup and prefs are stored separately on purpose.** `tvguide_lineup` says which channels exist; `tvguide_channel_prefs` (keyed by channel id) says how they are presented. Keeping prefs out of the lineup is what lets a rename survive toggling a lineup rule off and on.
+- **Removing a rule-swept channel freezes the rest into explicit picks.** Otherwise the next resolve sweeps it straight back in and the button looks broken.
 
 ### plugins/SpriteTab/
 

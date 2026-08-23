@@ -26,8 +26,23 @@ programming simply loops — which is what cable does anyway.
 
 ## Channels
 
-Channels come from a **lineup**, a list of source entries stored in
-`localStorage` under `tvguide_lineup`. Sources mix freely in one guide:
+Press **Channels** in the toolbar (or `c`) to open the channel manager: browse
+every studio, tag, group and saved filter in your library, search them, and
+choose what becomes a channel.
+
+Two independent things are stored, deliberately apart:
+
+- **The lineup** (`tvguide_lineup`) decides which channels exist.
+- **Prefs** (`tvguide_channel_prefs`) decide how a channel is presented — pinned,
+  hidden, renamed, re-badged, or given its own scene cap.
+
+They are separate because prefs are keyed by channel id: rename a studio, turn
+its lineup rule off and back on, and the rename is still there. Storing them
+together would lose it.
+
+### The lineup
+
+A list of source entries. Sources mix freely in one guide:
 
 ```json
 [
@@ -38,6 +53,11 @@ Channels come from a **lineup**, a list of source entries stored in
 ]
 ```
 
+An entry with `minScenes` is a **rule**: while it is on, a newly-added studio
+becomes a channel on its own. An entry with `ids` is an **explicit pick**.
+Removing a rule-swept channel in the manager freezes the rest into explicit
+picks — otherwise the next resolve would sweep it straight back in.
+
 Every provider reduces its source to the same thing — a `SceneFilterType` — so
 one shared fetcher serves all of them and a new source type is one entry in
 `src/domain/providers/index.js`.
@@ -45,6 +65,16 @@ one shared fetcher serves all of them and a new source type is one entry in
 Saved filters are the interesting case: any filter you can build in the Stash UI
 becomes a channel. Their stored `object_filter` uses the UI's own criterion
 shape rather than the API's, so `src/domain/savedFilterCriteria.js` converts it.
+
+### Ordering and customisation
+
+Hand-ordering 87 channels is not workable, so order is **sort mode plus pins**:
+choose name, scene count or source, and pin a handful of channels above it. Pin
+order is the order you pinned them.
+
+Per channel you can override the display name, point it at your own logo URL,
+hide it from the guide without removing it from the lineup, and give it its own
+scene cap when the global one is too small for a large studio.
 
 ## Controls
 
@@ -58,8 +88,12 @@ shape rather than the API's, so `src/domain/savedFilterCriteria.js` converts it.
 | `Enter` | Watch in the corner viewer |
 | `E` / `Shift+Enter` | Open the scene at its live position |
 | `M` | Mute / unmute |
+| `C` | Manage channels |
 | `?` | Shortcut help |
 | `Esc` | Close |
+
+While the manager is open it owns the keyboard — it is full of text fields, so
+guide shortcuts stand aside and `Esc` closes the panel rather than the guide.
 
 The guide is fully operable by mouse, keyboard and touch. It follows the ARIA
 grid pattern with a roving tabindex, traps focus while open, and announces
@@ -83,7 +117,7 @@ made by media query, not touch capability, so tablets keep the grid.
 ## Development
 
 ```bash
-npm test           # 455 tests
+npm test           # 575 tests
 npm run build      # bundles src/ -> tvguide.js + tvguide.css
 npm run watch      # rebuild on change
 STASH_PLUGIN_DIR=/path/to/stash/plugins/TVGuide npm run sync
@@ -97,9 +131,9 @@ STASH_PLUGIN_DIR=/path/to/stash/plugins/TVGuide npm run sync
 ```
 src/
   api/       GraphQL client, queries, settings, pool cache
-  domain/    PURE -- scheduling, layout maths, lineup, providers
+  domain/    PURE -- scheduling, layout maths, lineup, prefs, providers
   state/     store, reducer, selectors, effects
-  ui/        overlay, grid, list, banner, viewer, keyboard, gestures
+  ui/        overlay, grid, list, banner, viewer, manager, keyboard, gestures
   index.js   composition root
 ```
 
@@ -111,3 +145,9 @@ over one state tree.
 `domain/` and `state/` hold 100% test coverage (90% branches) — that is where the
 scheduling, the midnight rollover and the keyboard movement live. `api/` and
 `ui/` are held to 80/70.
+
+One subtlety worth knowing before changing the state layer: the visible channel
+list lives in `state.channels` rather than in a selector. `MOVE_FOCUS` walks it
+inside the reducer, so if sorting only happened at render time, arrow-down would
+land on the wrong row. `state.allChannels` holds the raw resolved list, and
+`state.channels` is recomputed whenever channels, prefs or sort change.

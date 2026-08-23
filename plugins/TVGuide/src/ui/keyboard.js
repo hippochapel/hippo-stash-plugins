@@ -25,6 +25,7 @@ export const Intents = {
     TUNE: 'TUNE',
     EXPAND: 'EXPAND',
     MUTE: 'MUTE',
+    MANAGE: 'MANAGE',
     CLOSE: 'CLOSE',
     HELP: 'HELP'
 };
@@ -66,6 +67,8 @@ export function mapKey(event) {
             return Intents.EXPAND;
         case 'm':
             return Intents.MUTE;
+        case 'c':
+            return Intents.MANAGE;
         case '?':
             return Intents.HELP;
         default:
@@ -88,6 +91,15 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
 
         const intent = mapKey(event);
         if (!intent) return;
+
+        // While the manager is open it owns the keyboard: it is full of text
+        // fields, and guide shortcuts would fight them. Escape steps back out.
+        if (state.managerOpen) {
+            if (intent !== Intents.CLOSE) return;
+            event.preventDefault();
+            store.dispatch({ type: Events.MANAGER_CLOSE });
+            return;
+        }
 
         // Only claim keys we actually acted on, so browser shortcuts survive.
         event.preventDefault();
@@ -150,6 +162,9 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
                 return;
             case Intents.MUTE:
                 store.dispatch({ type: Events.SET_MUTED, muted: !state.muted });
+                return;
+            case Intents.MANAGE:
+                store.dispatch({ type: Events.MANAGER_OPEN });
                 return;
             case Intents.HELP:
                 if (onHelp) onHelp();

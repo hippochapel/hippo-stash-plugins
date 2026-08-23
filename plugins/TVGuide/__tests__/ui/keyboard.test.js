@@ -227,3 +227,53 @@ describe('createKeyboardHandler', () => {
         }).not.toThrow();
     });
 });
+
+describe('the channel manager owns the keyboard while open', () => {
+    function harness(stateOverrides = {}) {
+        const state = {
+            ...createInitialState(),
+            open: true,
+            nowMs: NOON,
+            channels: [{ id: 'studio:1' }],
+            focus: { channelId: 'studio:1', timeMs: NOON },
+            ...stateOverrides
+        };
+        const dispatch = jest.fn();
+        const handle = createKeyboardHandler({
+            store: { getState: () => state, dispatch },
+            onClose: jest.fn(),
+            onHelp: jest.fn()
+        });
+        return { handle, dispatch };
+    }
+
+    const event = (k, extra = {}) => ({
+        key: k,
+        shiftKey: false,
+        target: { tagName: 'DIV' },
+        preventDefault: jest.fn(),
+        stopPropagation: jest.fn(),
+        ...extra
+    });
+
+    it('opens the manager with c', () => {
+        const { handle, dispatch } = harness();
+        handle(event('c'));
+        expect(dispatch).toHaveBeenCalledWith({ type: Events.MANAGER_OPEN });
+    });
+
+    it('does not steal guide shortcuts while the manager is open', () => {
+        // The manager is full of text fields; n, m and e must reach them.
+        const { handle, dispatch } = harness({ managerOpen: true });
+        handle(event('n'));
+        handle(event('m'));
+        handle(event('ArrowRight'));
+        expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('Escape closes the manager rather than the whole guide', () => {
+        const { handle, dispatch } = harness({ managerOpen: true });
+        handle(event('Escape'));
+        expect(dispatch).toHaveBeenCalledWith({ type: Events.MANAGER_CLOSE });
+    });
+});

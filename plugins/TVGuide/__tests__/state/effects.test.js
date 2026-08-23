@@ -138,6 +138,13 @@ describe('fetchPool', () => {
         expect(ctx.gql.mock.calls[0][1].find.per_page).toBe(42);
     });
 
+    it('prefers a per-channel cap carried on the effect', async () => {
+        const { run, dispatch, getState, ctx } = harness();
+        run({ ...effect, poolCap: 400 }, getState, dispatch);
+        await flush();
+        expect(ctx.gql.mock.calls[0][1].find.per_page).toBe(400);
+    });
+
     it('never runs more than the concurrency limit at once', async () => {
         let active = 0;
         let peak = 0;
@@ -242,5 +249,49 @@ describe('side effects on the page', () => {
     it('ignores an unknown effect', () => {
         const { run, dispatch, getState } = harness();
         expect(() => run({ type: 'nonsense' }, getState, dispatch)).not.toThrow();
+    });
+});
+
+
+describe('loadCatalog', () => {
+    it('fetches every source and reports the catalogue', async () => {
+        const { run, dispatch, getState } = harness();
+        run({ type: 'loadCatalog' }, getState, dispatch);
+        await flush();
+
+        const call = dispatch.mock.calls.find((c) => c[0].type === Events.CATALOG_LOADED);
+        expect(call).toBeDefined();
+        expect(call[0].catalog.studio[0].id).toBe('studio:1');
+    });
+
+    it('still resolves when an individual source fails, since those are caught per-source', async () => {
+        const { run, dispatch, getState } = harness({
+            gql: () => {
+                throw new Error('one source exploded');
+            }
+        });
+
+        expect(() => run({ type: 'loadCatalog' }, getState, dispatch)).not.toThrow();
+        await flush();
+
+        expect(dispatch).toHaveBeenCalledWith(
+            expect.objectContaining({ type: Events.CATALOG_LOADED })
+        );
+    });
+
+    it('reports a wholesale catalogue failure rather than letting it escape', async () => {
+        const { run, dispatch, getState } = harness({
+            fetchCatalogFn: async () => {
+                throw new Error('catalogue exploded');
+            }
+        });
+
+        expect(() => run({ type: 'loadCatalog' }, getState, dispatch)).not.toThrow();
+        await flush();
+
+        expect(dispatch).toHaveBeenCalledWith({
+            type: Events.CATALOG_FAILED,
+            message: 'catalogue exploded'
+        });
     });
 });

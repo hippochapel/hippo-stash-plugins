@@ -179,3 +179,70 @@ describe('grid furniture', () => {
         expect(sel.nowMarkerPct(state({ windowStartMs: NOON + 5 * HOUR }))).toBeNull();
     });
 });
+
+describe('channel manager selectors', () => {
+    const cat = (id, name, source = 'studio') => ({
+        id, source, name, logo: {}, sceneCount: 5, sceneFilter: {}
+    });
+
+    const managerState = (overrides = {}) =>
+        state({
+            managerOpen: true,
+            managerSearch: '',
+            sort: 'name',
+            lineup: [{ source: 'studio', minScenes: 5 }],
+            catalog: { studio: [cat('studio:1', 'Alpha'), cat('studio:9', 'Omega')] },
+            allChannels: [cat('studio:1', 'Alpha')],
+            prefs: {},
+            ...overrides
+        });
+
+    it('exposes manager state', () => {
+        const s = managerState({ catalogStatus: PoolStatus.READY, catalogError: null });
+        expect(sel.isManagerOpen(s)).toBe(true);
+        expect(sel.sortMode(s)).toBe('name');
+        expect(sel.catalogStatus(s)).toBe(PoolStatus.READY);
+        expect(sel.catalogError(managerState({ catalogError: 'x' }))).toBe('x');
+    });
+
+    it('finds the rule entry for a source', () => {
+        expect(sel.lineupRule(managerState(), 'studio')).toEqual({ source: 'studio', minScenes: 5 });
+        expect(sel.lineupRule(managerState(), 'tag')).toBeNull();
+    });
+
+    it('does not mistake an explicit-picks entry for a rule', () => {
+        const s = managerState({ lineup: [{ source: 'studio', ids: ['1'] }] });
+        expect(sel.lineupRule(s, 'studio')).toBeNull();
+        expect(sel.explicitIds(s, 'studio')).toEqual(['1']);
+    });
+
+    it('reports no explicit picks when there are none', () => {
+        expect(sel.explicitIds(managerState(), 'studio')).toEqual([]);
+    });
+
+    it('marks which catalogue rows are already in the guide', () => {
+        const rows = sel.catalogRows(managerState(), 'studio');
+        expect(rows.map((r) => [r.channel.id, r.included])).toEqual([
+            ['studio:1', true],
+            ['studio:9', false]
+        ]);
+    });
+
+    it('filters catalogue rows by the search query', () => {
+        const rows = sel.catalogRows(managerState({ managerSearch: ' OME ' }), 'studio');
+        expect(rows.map((r) => r.channel.id)).toEqual(['studio:9']);
+    });
+
+    it('reports pinned, hidden and the raw pref for each row', () => {
+        const s = managerState({ prefs: { 'studio:1': { pinnedAt: 5, hidden: true, name: 'A' } } });
+        const [row] = sel.catalogRows(s, 'studio');
+        expect(row.pinned).toBe(true);
+        expect(row.hidden).toBe(true);
+        expect(row.pref.name).toBe('A');
+    });
+
+    it('returns nothing for a source with no catalogue yet', () => {
+        expect(sel.catalogRows(managerState({ catalog: null }), 'studio')).toEqual([]);
+        expect(sel.catalogRows(managerState(), 'tag')).toEqual([]);
+    });
+});

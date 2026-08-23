@@ -489,3 +489,177 @@ body.stash-tvguide-active {
     border: none;
     cursor: pointer;
 }
+
+/* ---------- channel manager ---------- */
+
+.tvguide-manager {
+    position: absolute;
+    inset: 64px 24px 24px;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--tvguide-border);
+    border-radius: 8px;
+    background: var(--tvguide-surface);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.tvguide-manager[hidden] { display: none; }
+
+.tvguide-manager-head {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 56px 14px 16px;
+    border-bottom: 1px solid var(--tvguide-border);
+    flex-wrap: wrap;
+}
+
+.tvguide-manager-title { margin: 0; font-size: 17px; }
+
+.tvguide-manager-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.tvguide-manager-search {
+    min-width: 200px;
+    padding: 6px 10px;
+    border: 1px solid var(--tvguide-border);
+    border-radius: 4px;
+    background: var(--tvguide-bg);
+    color: var(--tvguide-text);
+}
+
+.tvguide-manager-sort,
+.tvguide-manager-threshold,
+.tvguide-manager-editor input {
+    padding: 5px 8px;
+    border: 1px solid var(--tvguide-border);
+    border-radius: 4px;
+    background: var(--tvguide-bg);
+    color: var(--tvguide-text);
+}
+
+.tvguide-manager-threshold { width: 72px; }
+
+.tvguide-manager-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.tvguide-manager-status {
+    margin: 0;
+    padding: 8px 16px;
+    color: var(--tvguide-text-dim);
+    font-size: 12px;
+    border-bottom: 1px solid var(--tvguide-border);
+}
+
+.tvguide-manager-sections {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px 16px 16px;
+    touch-action: pan-y;
+}
+
+.tvguide-manager-section { margin-top: 16px; }
+
+.tvguide-manager-section-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 0;
+    background: var(--tvguide-surface);
+    border-bottom: 1px solid var(--tvguide-border);
+    flex-wrap: wrap;
+}
+
+.tvguide-manager-section-head h3 { margin: 0; font-size: 14px; }
+
+.tvguide-manager-rule {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    color: var(--tvguide-text-dim);
+    font-size: 12px;
+}
+
+.tvguide-manager-list { margin: 0; padding: 0; list-style: none; }
+
+.tvguide-manager-row { border-bottom: 1px solid var(--tvguide-border); }
+
+.tvguide-manager-row-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+}
+
+/* A channel not in the guide is present but inert -- dimmed, not hidden, so
+   adding it back is one click from where you looked for it. */
+.tvguide-manager-row:not(.is-included) .tvguide-manager-row-main { opacity: 0.5; }
+.tvguide-manager-row.is-hidden .tvguide-manager-row-name { text-decoration: line-through; }
+.tvguide-manager-row.is-pinned .tvguide-manager-row-name::before {
+    content: '★ ';
+    color: var(--tvguide-accent);
+}
+
+.tvguide-manager-row-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.tvguide-manager-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tvguide-manager-row-meta { color: var(--tvguide-text-dim); font-size: 12px; }
+
+.tvguide-manager-row-actions {
+    display: flex;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.tvguide-manager-toggle[aria-pressed='true'] {
+    border-color: var(--tvguide-accent);
+    color: var(--tvguide-accent);
+}
+
+.tvguide-manager-toggle[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+.tvguide-manager-editor {
+    display: flex;
+    gap: 16px;
+    padding: 4px 0 12px 56px;
+    flex-wrap: wrap;
+}
+
+.tvguide-manager-field { display: flex; flex-direction: column; gap: 4px; }
+.tvguide-manager-field label { color: var(--tvguide-text-dim); font-size: 12px; }
+
+.tvguide-manager-empty {
+    margin: 8px 0;
+    color: var(--tvguide-text-dim);
+    font-size: 12px;
+}
+
+@media (max-width: 767px) {
+    .tvguide-manager { inset: 8px; }
+    .tvguide-manager-row-main { flex-wrap: wrap; }
+    .tvguide-manager-row-actions { width: 100%; }
+    .tvguide-manager-editor { padding-left: 0; }
+}

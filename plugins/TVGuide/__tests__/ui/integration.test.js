@@ -47,6 +47,7 @@ function baseState(overrides = {}) {
         dayKey: DAY_KEY,
         dayStartMs: DAY_START,
         windowStartMs: NOON,
+        allChannels: [channel('studio:1', 'Channel One'), channel('studio:2', 'Channel Two')],
         channels: [channel('studio:1', 'Channel One'), channel('studio:2', 'Channel Two')],
         channelsStatus: PoolStatus.READY,
         tunedChannelId: 'studio:1',
@@ -184,6 +185,40 @@ describe('grid rendering', () => {
         blocks[blocks.length - 1].dispatchEvent(new MouseEvent('mouseenter'));
 
         expect(store.getState().focus.timeMs).toBe(before);
+    });
+
+    it('updates the row header when a channel is renamed', () => {
+        // Regression: a rename changes neither the id list nor the block set,
+        // so keying the rebuild on ids alone left the old name on screen.
+        const { store, grid } = mountGrid(baseState());
+        expect(grid.element.querySelector('.tvguide-row-name').textContent).toBe('Channel One');
+
+        store.dispatch({
+            type: Events.SET_CHANNEL_PREF,
+            channelId: 'studio:1',
+            patch: { name: 'Renamed' }
+        });
+        grid.render(store.getState());
+
+        // The rename also re-sorts it -- "Renamed" now follows "Channel Two" --
+        // so look the row up by channel rather than by position.
+        const renamed = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-name');
+        expect(renamed.textContent).toBe('Renamed');
+        expect(grid.element.querySelectorAll('.tvguide-row-name')[0].textContent).toBe('Channel Two');
+    });
+
+    it('updates the row badge when a custom logo is set', () => {
+        const { store, grid } = mountGrid(baseState());
+        store.dispatch({
+            type: Events.SET_CHANNEL_PREF,
+            channelId: 'studio:1',
+            patch: { logoUrl: '/custom.png' }
+        });
+        grid.render(store.getState());
+
+        const badge = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-logo');
+        expect(badge.tagName).toBe('IMG');
+        expect(badge.getAttribute('src')).toBe('/custom.png');
     });
 
     it('does not rebuild blocks on a plain clock tick', () => {
