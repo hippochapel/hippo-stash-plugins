@@ -11,7 +11,13 @@ import { createClient } from './api/client.js';
 import { loadSettings } from './api/settings.js';
 import { createPoolCache } from './api/cache.js';
 import { parseLineup, serializeLineup, DEFAULT_LINEUP } from './domain/lineup.js';
-import { parsePrefs, DEFAULT_SORT, SORT_MODES } from './domain/channelPrefs.js';
+import {
+    parsePrefs,
+    parsePinOrder,
+    migratePinOrder,
+    migrateSort,
+    DEFAULT_SORT
+} from './domain/channelPrefs.js';
 import { createStore } from './state/store.js';
 import { createEffectRunner } from './state/effects.js';
 import { createAnnouncer } from './ui/a11y.js';
@@ -50,6 +56,15 @@ function seedLineup(settings) {
     }
 }
 
+function parseJsonArray(json) {
+    try {
+        const parsed = JSON.parse(json);
+        return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : undefined;
+    } catch (e) {
+        return undefined;
+    }
+}
+
 function readStored(key, fallback = null) {
     try {
         const value = window.localStorage.getItem(key);
@@ -70,12 +85,15 @@ export function start() {
         gql,
         cache,
         viewer,
+        player: { setMode: (mode) => overlayRef?.player.setMode(mode) },
         storage: window.localStorage,
         announce: (message) => announcer.announce(message),
         navigate: navigateToScene,
         getLineup: () => store.getState().lineup
     });
 
+    // `player` is created by the overlay, so the runner reaches it lazily.
+    let overlayRef = null;
     const store = createStore({ runEffect });
 
     const overlay = createOverlay({
@@ -86,6 +104,7 @@ export function start() {
         onRowVisible: (channelId) => store.dispatch({ type: Events.POOL_REQUESTED, channelId })
     });
 
+    overlayRef = overlay;
     store.subscribe((state) => overlay.render(state));
 
     const navbar = createNavbarButton({ onActivate: () => overlay.open() });
@@ -110,6 +129,17 @@ export function start() {
     window.addEventListener('popstate', onPopState);
     window.addEventListener('hashchange', onPopState);
 
+    // Coming back from another app leaves the element paused on iOS with no
+    // event drift correction can act on -- it deliberately ignores a paused
+    // element, so playback has to be re-established explicitly.
+    const onVisibility = () => {
+        if (document.visibilityState !== 'visible') return;
+        store.dispatch({ type: Events.TICK, nowMs: Date.now() });
+        store.dispatch({ type: Events.RESUME_AFTER_HIDDEN });
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pageshow', onVisibility);
+
     const ticker = setInterval(() => {
         if (store.getState().open) store.dispatch({ type: Events.TICK, nowMs: Date.now() });
     }, TICK_MS);
@@ -120,12 +150,29 @@ export function start() {
 
         if (settings.guide_navbar_button) navbar.start();
 
-        const storedSort = readStored(STORAGE_KEYS.sort, DEFAULT_SORT);
+        const prefs = parsePrefs(readStored(STORAGE_KEYS.prefs));
+
+        // Pins used to be a timestamp on each pref, which could not express a
+        // manual order. Recover them into the ordered array on first run.
+        const storedPins = readStored(STORAGE_KEYS.pinOrder);
+        const pinOrder = storedPins ? parsePinOrder(storedPins) : migratePinOrder(prefs);
+        if (!storedPins && pinOrder.length > 0) {
+            try {
+                window.localStorage.setItem(STORAGE_KEYS.pinOrder, JSON.stringify(pinOrder));
+            } catch (e) {
+                /* storage unavailable; the migration simply repeats next time */
+            }
+        }
+
         store.dispatch({
             type: Events.PREFS_LOADED,
-            prefs: parsePrefs(readStored(STORAGE_KEYS.prefs)),
-            sort: SORT_MODES.includes(storedSort) ? storedSort : DEFAULT_SORT,
-            lineup: readLineup()
+            prefs,
+            pinOrder,
+            sort: migrateSort(readStored(STORAGE_KEYS.sort, DEFAULT_SORT)),
+            lineup: readLineup(),
+            collapsedGroups: parseJsonArray(readStored(STORAGE_KEYS.collapsed)),
+            headWidthPx: Number(readStored(STORAGE_KEYS.headWidth)) || undefined,
+            playerMode: readStored(STORAGE_KEYS.playerMode) || undefined
         });
 
         store.dispatch({
@@ -142,6 +189,8 @@ export function start() {
         clearInterval(ticker);
         stopLayoutWatch();
         document.removeEventListener('keydown', onKeydown, true);
+        document.removeEventListener('visibilitychange', onVisibility);
+        window.removeEventListener('pageshow', onVisibility);
         window.removeEventListener('popstate', onPopState);
         window.removeEventListener('hashchange', onPopState);
         navbar.stop();

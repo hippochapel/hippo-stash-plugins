@@ -198,11 +198,27 @@ describe('channel manager selectors', () => {
         });
 
     it('exposes manager state', () => {
-        const s = managerState({ catalogStatus: PoolStatus.READY, catalogError: null });
+        const s = managerState({
+            managerSource: 'studio',
+            catalogStatus: { studio: PoolStatus.READY }
+        });
         expect(sel.isManagerOpen(s)).toBe(true);
         expect(sel.sortMode(s)).toBe('name');
+        expect(sel.managerSource(s)).toBe('studio');
         expect(sel.catalogStatus(s)).toBe(PoolStatus.READY);
-        expect(sel.catalogError(managerState({ catalogError: 'x' }))).toBe('x');
+        expect(sel.catalogError(s)).toBeNull();
+    });
+
+    it('reports status and errors per source', () => {
+        const s = managerState({
+            managerSource: 'studio',
+            catalogStatus: { tag: PoolStatus.ERROR },
+            catalogError: { tag: 'offline' }
+        });
+        expect(sel.catalogStatus(s, 'tag')).toBe(PoolStatus.ERROR);
+        expect(sel.catalogError(s, 'tag')).toBe('offline');
+        // A source never fetched is idle, not errored.
+        expect(sel.catalogStatus(s, 'studio')).toBe(PoolStatus.IDLE);
     });
 
     it('finds the rule entry for a source', () => {
@@ -234,7 +250,10 @@ describe('channel manager selectors', () => {
     });
 
     it('reports pinned, hidden and the raw pref for each row', () => {
-        const s = managerState({ prefs: { 'studio:1': { pinnedAt: 5, hidden: true, name: 'A' } } });
+        const s = managerState({
+            prefs: { 'studio:1': { hidden: true, name: 'A' } },
+            pinOrder: ['studio:1']
+        });
         const [row] = sel.catalogRows(s, 'studio');
         expect(row.pinned).toBe(true);
         expect(row.hidden).toBe(true);
@@ -242,7 +261,91 @@ describe('channel manager selectors', () => {
     });
 
     it('returns nothing for a source with no catalogue yet', () => {
-        expect(sel.catalogRows(managerState({ catalog: null }), 'studio')).toEqual([]);
+        expect(sel.catalogRows(managerState({ catalog: {} }), 'studio')).toEqual([]);
         expect(sel.catalogRows(managerState(), 'tag')).toEqual([]);
+    });
+});
+
+
+describe('guide navigation selectors', () => {
+    const chan = (id, name, source = 'studio') => ({
+        id, source, name, logo: {}, sceneCount: 5, sceneFilter: {}
+    });
+
+    const navState = (overrides = {}) =>
+        state({
+            sourceOrder: ['studio', 'performer', 'tag', 'group', 'savedFilter'],
+            allChannels: [
+                chan('studio:1', 'Alpha'),
+                chan('studio:2', 'Bravo'),
+                chan('tag:1', 'Beach', 'tag')
+            ],
+            channels: [chan('studio:1', 'Alpha'), chan('studio:2', 'Bravo'), chan('tag:1', 'Beach', 'tag')],
+            ...overrides
+        });
+
+    it('offers a button per source type actually present', () => {
+        expect(sel.availableTypes(navState())).toEqual(['studio', 'tag']);
+    });
+
+    it('offers no buttons when there is only one type to choose', () => {
+        const single = navState({ allChannels: [chan('studio:1', 'Alpha')] });
+        expect(sel.availableTypes(single)).toEqual([]);
+    });
+
+    it('lists the first letters present, sorted', () => {
+        expect(sel.availableLetters(navState())).toEqual(['A', 'B']);
+    });
+
+    it('tolerates a channel with no name', () => {
+        const s2 = navState({ allChannels: [{ id: 'studio:9', source: 'studio', logo: {} }] });
+        expect(sel.availableLetters(s2)).toEqual(['#']);
+    });
+
+    it('matches a nameless channel under # when jumping', () => {
+        const s2 = navState({ channels: [{ id: 'studio:9', source: 'studio', logo: {} }] });
+        expect(sel.firstChannelForLetter(s2, '#')).toBe('studio:9');
+    });
+
+    it('defaults the catalogue source to the one being browsed', () => {
+        const s2 = state({
+            managerSource: 'studio',
+            managerSearch: '',
+            catalog: { studio: [{ id: 'studio:1', source: 'studio', name: 'A', logo: {}, sceneCount: 1 }] },
+            allChannels: []
+        });
+        expect(sel.catalogRows(s2)).toHaveLength(1);
+    });
+
+    it('files a non-alphabetic name under #', () => {
+        const s = navState({ allChannels: [chan('studio:9', '3D Available')] });
+        expect(sel.availableLetters(s)).toEqual(['#']);
+    });
+
+    it('finds the first visible channel for a letter', () => {
+        expect(sel.firstChannelForLetter(navState(), 'B')).toBe('studio:2');
+        expect(sel.firstChannelForLetter(navState(), 'A')).toBe('studio:1');
+    });
+
+    it('returns null when no channel starts with that letter', () => {
+        expect(sel.firstChannelForLetter(navState(), 'Z')).toBeNull();
+    });
+
+    it('finds a non-alphabetic channel under #', () => {
+        const s = navState({ channels: [chan('tag:9', '3D Available', 'tag')] });
+        expect(sel.firstChannelForLetter(s, '#')).toBe('tag:9');
+    });
+
+    it('exposes player and layout state', () => {
+        const s = navState({ playerMode: 'theater', viewerPaused: true, headWidthPx: 260 });
+        expect(sel.playerMode(s)).toBe('theater');
+        expect(sel.isViewerPaused(s)).toBe(true);
+        expect(sel.headWidthPx(s)).toBe(260);
+        expect(sel.isPreviewing(s)).toBe(false);
+        expect(sel.isPreviewing(navState({ preview: { scene: {} } }))).toBe(true);
+        expect(sel.preview(navState({ preview: { scene: {} } }))).not.toBeNull();
+        expect(sel.guideSearch(navState({ guideSearch: 'x' }))).toBe('x');
+        expect(sel.typeFilter(navState({ typeFilter: 'tag' }))).toBe('tag');
+        expect(sel.channelGroups(navState({ channelGroups: [{ key: 'studio' }] }))).toHaveLength(1);
     });
 });

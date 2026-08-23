@@ -60,6 +60,12 @@ Non-obvious invariants:
 - **The visible channel list is state, not a selector.** `state.allChannels` is the raw resolved lineup; `state.channels` is the prefs-applied, sorted list, recomputed whenever channels/prefs/sort change. It has to be real state because `MOVE_FOCUS` walks it inside the reducer — derive it at render time and arrow-down lands on the wrong row.
 - **Lineup and prefs are stored separately on purpose.** `tvguide_lineup` says which channels exist; `tvguide_channel_prefs` (keyed by channel id) says how they are presented. Keeping prefs out of the lineup is what lets a rename survive toggling a lineup rule off and on.
 - **Removing a rule-swept channel freezes the rest into explicit picks.** Otherwise the next resolve sweeps it straight back in and the button looks broken.
+- **The now-line lives in a track overlay** (`left: var(--tvguide-head-width); right: 0`), so its `left: %` is a percentage of the track. Positioning it against the whole scroll container and adding a margin — as it once did — puts it progressively too far right and eventually off-screen.
+- **Not every source is hierarchical.** `SceneFilterType.performers` is a `MultiCriterionInput` with no `depth`, unlike studios/tags/groups; `createEntityProvider` takes a `hierarchical` flag for this. Sending `depth` to performers is rejected by the server.
+- **The guide is always grouped by type**, so there is no "sort by source" mode. `state.channels` is the flattened, collapse-aware visible order that `MOVE_FOCUS` walks; `state.channelGroups` is what renders.
+- **Pins are an ordered array** (`tvguide_pin_order`), not a `pinnedAt` timestamp — a timestamp cannot express a manual drag order. Legacy `pinnedAt` prefs migrate on first load.
+- **The keyboard handler captures and stops propagation**, so controls that interpret arrow keys themselves (the column resizer, sliders) must be covered by `handlesOwnKeys` in `src/ui/keyboard.js` or they never receive them.
+- **`body { overflow: hidden }` does not lock scrolling in iOS Safari.** The overlay pins the body with `position: fixed` and restores `window.scrollY` on close.
 
 ### plugins/SpriteTab/
 

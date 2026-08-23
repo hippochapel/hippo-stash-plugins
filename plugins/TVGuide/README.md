@@ -42,11 +42,13 @@ together would lose it.
 
 ### The lineup
 
-A list of source entries. Sources mix freely in one guide:
+A list of source entries — studios, **models** (performers), tags, groups and
+saved filters mix freely in one guide:
 
 ```json
 [
   { "source": "studio", "minScenes": 5 },
+  { "source": "performer", "minScenes": 10 },
   { "source": "tag", "ids": ["12", "34"] },
   { "source": "group", "minScenes": 1 },
   { "source": "savedFilter", "names": ["Favourites"] }
@@ -66,11 +68,19 @@ Saved filters are the interesting case: any filter you can build in the Stash UI
 becomes a channel. Their stored `object_filter` uses the UI's own criterion
 shape rather than the API's, so `src/domain/savedFilterCriteria.js` converts it.
 
-### Ordering and customisation
+### Ordering and navigation
 
-Hand-ordering 87 channels is not workable, so order is **sort mode plus pins**:
-choose name, scene count or source, and pin a handful of channels above it. Pin
-order is the order you pinned them.
+The guide is **always grouped by type** — Pinned first, then a collapsible group
+per source with a count. Within a group you sort by name or scene count.
+
+Hand-ordering 119 channels is not workable, so finding things is done with:
+a **search box**, a **type filter** built from the sources you actually have, an
+**A–Z rail** beside the channel column (which switches to name sort, since a
+letter means nothing in any other order), and a **jump to current** button.
+
+**Pins** sit in their own group at the top and are drag-reorderable, or moved
+with the keyboard. The channel column itself is resizable by dragging its
+divider (or with arrow keys when it has focus).
 
 Per channel you can override the display name, point it at your own logo URL,
 hide it from the guide without removing it from the lineup, and give it its own
@@ -89,6 +99,15 @@ scene cap when the global one is too small for a large studio.
 | `E` / `Shift+Enter` | Open the scene at its live position |
 | `M` | Mute / unmute |
 | `C` | Manage channels |
+
+The player carries its own controls over the video: play/pause, mute, theater,
+fullscreen and Watch. Three sizes — corner, **theater** (full width, guide
+scrolling below) and **fullscreen**. iOS Safari cannot fullscreen an arbitrary
+element, so on iPad fullscreen shows the video alone; theater is the iPad answer.
+
+Clicking a programme that is not on now **previews** it as a still and pauses
+live playback, with a Back to live control. Clicking anything currently live
+tunes to it instead.
 | `?` | Shortcut help |
 | `Esc` | Close |
 
@@ -117,7 +136,7 @@ made by media query, not touch capability, so tablets keep the grid.
 ## Development
 
 ```bash
-npm test           # 575 tests
+npm test           # 770 tests
 npm run build      # bundles src/ -> tvguide.js + tvguide.css
 npm run watch      # rebuild on change
 STASH_PLUGIN_DIR=/path/to/stash/plugins/TVGuide npm run sync
@@ -146,8 +165,21 @@ over one state tree.
 scheduling, the midnight rollover and the keyboard movement live. `api/` and
 `ui/` are held to 80/70.
 
-One subtlety worth knowing before changing the state layer: the visible channel
-list lives in `state.channels` rather than in a selector. `MOVE_FOCUS` walks it
-inside the reducer, so if sorting only happened at render time, arrow-down would
-land on the wrong row. `state.allChannels` holds the raw resolved list, and
-`state.channels` is recomputed whenever channels, prefs or sort change.
+Subtleties worth knowing before changing this:
+
+- **The visible channel list lives in `state.channels`, not in a selector.**
+  `MOVE_FOCUS` walks it inside the reducer, so if grouping and sorting only
+  happened at render time, arrow-down would land on the wrong row — or inside a
+  collapsed group. `state.allChannels` is the raw resolved list;
+  `state.channelGroups` is for rendering; `state.channels` is the flattened,
+  collapse-aware order.
+- **The now-line and gridlines live in a track overlay** that starts where the
+  channel column ends, so their `left: %` is a percentage of the track. They were
+  previously positioned against the whole scroll container with a margin, which
+  put the line progressively too far right.
+- **Condensed rows are not to scale.** A channel of two-minute scenes collapses
+  to `[N before][prev][current][next][N after]`, laid out for readability. Those
+  rows do not line up with the clock; the live highlight identifies what is on.
+- **The keyboard handler runs in the capture phase** and stops propagation on
+  keys it owns, so any control that interprets arrows itself must be listed in
+  `handlesOwnKeys` — otherwise it never receives them.

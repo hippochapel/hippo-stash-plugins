@@ -25,7 +25,7 @@ describe('validateLineup', () => {
     });
 
     it('drops entries with an unknown or missing source', () => {
-        expect(validateLineup([{ source: 'performer' }, { source: 'studio' }, {}])).toEqual([
+        expect(validateLineup([{ source: 'gallery' }, { source: 'studio' }, {}])).toEqual([
             { source: 'studio', minScenes: 0 }
         ]);
     });
@@ -81,7 +81,7 @@ describe('parseLineup', () => {
 
     it('falls back to the default when JSON is valid but holds no usable entry', () => {
         expect(parseLineup('[]')).toEqual(DEFAULT_LINEUP);
-        expect(parseLineup('[{"source":"performer"}]')).toEqual(DEFAULT_LINEUP);
+        expect(parseLineup('[{"source":"gallery"}]')).toEqual(DEFAULT_LINEUP);
         expect(parseLineup('{"source":"studio"}')).toEqual(DEFAULT_LINEUP);
     });
 });

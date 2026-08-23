@@ -110,18 +110,9 @@ export function createList({ store, onRowVisible }) {
                     ),
                     body(state, status, live, next)
                 ),
-                live
-                    ? el(
-                          'button',
-                          {
-                              class: 'tvguide-list-expand',
-                              type: 'button',
-                              'aria-label': `Watch ${sceneTitle(live.scene)} on ${channel.name}`,
-                              onclick: () => store.dispatch({ type: Events.EXPAND, channelId })
-                          },
-                          'Watch'
-                      )
-                    : null
+                // No per-row Watch button: tapping the row already tunes, and
+                // the player carries its own Watch control.
+                null
             );
         }
     }

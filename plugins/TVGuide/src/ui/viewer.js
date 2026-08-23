@@ -48,6 +48,29 @@ export function createViewer({ now = () => Date.now(), document: doc = document 
     let streamBaseSeconds = 0;
     let seekTimer = null;
     let driftTimer = null;
+    // Set while the user has deliberately paused, so drift correction and the
+    // resume path both leave the element alone.
+    let userPaused = false;
+    // A still being shown instead of the live stream.
+    let posterOnly = false;
+    const listeners = new Set();
+
+    function emit(event) {
+        for (const listener of listeners) {
+            try {
+                listener(event);
+            } catch (e) {
+                /* a broken listener must not stop playback */
+            }
+        }
+    }
+
+    // Loading state: the poster is up from the moment we tune, and the spinner
+    // runs until the element actually reports playing.
+    video.addEventListener('loadstart', () => emit({ type: 'loading' }));
+    video.addEventListener('waiting', () => emit({ type: 'loading' }));
+    video.addEventListener('playing', () => emit({ type: 'playing' }));
+    video.addEventListener('pause', () => emit({ type: 'paused' }));
 
     /** Where the schedule says we should be, in scene time. */
     function expectedSeconds() {
@@ -104,7 +127,7 @@ export function createViewer({ now = () => Date.now(), document: doc = document 
     }
 
     function checkDrift() {
-        if (!currentSceneId || video.paused || video.seeking) return;
+        if (!currentSceneId || userPaused || posterOnly || video.paused || video.seeking) return;
         if (Math.abs(video.currentTime - expectedStreamSeconds()) > DRIFT_TOLERANCE_S) {
             seek(expectedSeconds());
         }
@@ -118,8 +141,16 @@ export function createViewer({ now = () => Date.now(), document: doc = document 
     return {
         element: video,
 
+        /** Subscribe to loading/playing/paused. Returns an unsubscribe. */
+        subscribe(listener) {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+
         /** Point the viewer at a scene, positioned where the schedule says. */
         tune(scene, offsetMs, muted) {
+            userPaused = false;
+            posterOnly = false;
             baseOffsetMs = offsetMs;
             baseWallMs = now();
             video.muted = Boolean(muted);
@@ -156,7 +187,37 @@ export function createViewer({ now = () => Date.now(), document: doc = document 
             video.muted = Boolean(muted);
         },
 
+        setPaused(paused) {
+            userPaused = Boolean(paused);
+            if (paused) video.pause();
+            else play();
+        },
+
+        /**
+         * Show a scene as a still, without streaming it.
+         *
+         * Used when previewing something that is not on now: there is nothing
+         * live to show, and starting its stream would misrepresent the schedule.
+         */
+        showPoster(scene) {
+            posterOnly = true;
+            userPaused = true;
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            currentSceneId = null;
+            streamUrl = null;
+            if (scene?.paths?.screenshot) video.poster = scene.paths.screenshot;
+            emit({ type: 'poster' });
+        },
+
+        isPaused() {
+            return userPaused || video.paused;
+        },
+
         stop() {
+            userPaused = false;
+            posterOnly = false;
             clearSeekTimer();
             if (driftTimer) {
                 clearInterval(driftTimer);
@@ -171,6 +232,22 @@ export function createViewer({ now = () => Date.now(), document: doc = document 
         },
 
         // Exposed for tests and for the drift watch to be driven deterministically.
+        /**
+         * Re-establish playback after the tab was backgrounded.
+         *
+         * iOS pauses the element on app switch and fires nothing drift
+         * correction can act on -- and drift correction deliberately ignores a
+         * paused element, so it can never recover on its own.
+         */
+        resume(offsetMs) {
+            if (userPaused || posterOnly || !streamUrl) return false;
+            baseOffsetMs = offsetMs;
+            baseWallMs = now();
+            seek(offsetMs / 1000);
+            play();
+            return true;
+        },
+
         _checkDrift: checkDrift,
         _expectedSeconds: expectedSeconds,
         _streamBaseSeconds: () => streamBaseSeconds

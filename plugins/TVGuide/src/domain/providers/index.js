@@ -9,12 +9,14 @@
 import studio from './studio.js';
 import tag from './tag.js';
 import group from './group.js';
+import performer from './performer.js';
 import savedFilter from './savedFilter.js';
 
 export const PROVIDERS = {
     [studio.source]: studio,
     [tag.source]: tag,
     [group.source]: group,
+    [performer.source]: performer,
     [savedFilter.source]: savedFilter
 };
 

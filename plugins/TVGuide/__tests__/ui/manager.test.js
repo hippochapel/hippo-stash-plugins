@@ -31,8 +31,9 @@ function mount(overrides = {}) {
         open: true,
         nowMs: NOON,
         managerOpen: true,
+        managerSource: 'studio',
         catalog: CATALOG,
-        catalogStatus: PoolStatus.READY,
+        catalogStatus: { studio: PoolStatus.READY, tag: PoolStatus.READY, group: PoolStatus.READY, savedFilter: PoolStatus.READY, performer: PoolStatus.READY },
         lineup: [{ source: 'studio', minScenes: 5 }],
         allChannels: [chan('studio:1', 'Alpha', 50), chan('studio:2', 'Bravo', 20)],
         channels: [chan('studio:1', 'Alpha', 50), chan('studio:2', 'Bravo', 20)],
@@ -66,10 +67,27 @@ describe('presentation', () => {
         expect(manager.element.hidden).toBe(true);
     });
 
-    it('lists every source section', () => {
+    it('shows one source at a time, chosen from a dropdown', () => {
+        // 119 channels across five types is not a list anyone scrolls through.
         const { manager } = mount();
         const headings = Array.from(manager.element.querySelectorAll('h3')).map((h) => h.textContent);
-        expect(headings).toEqual(['Studios', 'Tags', 'Groups', 'Saved filters']);
+        expect(headings).toEqual(['Studios']);
+    });
+
+    it('offers every source type in the dropdown, including Models', () => {
+        const { manager } = mount();
+        const options = Array.from(
+            manager.element.querySelectorAll('.tvguide-manager-source option')
+        ).map((o) => o.textContent);
+        expect(options).toEqual(['Studios', 'Models', 'Tags', 'Groups', 'Filters']);
+    });
+
+    it('switches source from the dropdown', () => {
+        const { store, manager } = mount();
+        const select = manager.element.querySelector('.tvguide-manager-source');
+        select.value = 'tag';
+        select.dispatchEvent(new Event('change'));
+        expect(store.getState().managerSource).toBe('tag');
     });
 
     it('lists the catalogue, not just channels already in the guide', () => {
@@ -80,9 +98,13 @@ describe('presentation', () => {
         expect(rowFor(manager, 'studio:1').classList.contains('is-included')).toBe(true);
     });
 
-    it('shows scene counts, and marks saved filters as countless', () => {
+    it('shows scene counts', () => {
         const { manager } = mount();
         expect(rowFor(manager, 'studio:1').textContent).toContain('50 scenes');
+    });
+
+    it('marks saved filters as countless', () => {
+        const { manager } = mount({ managerSource: 'savedFilter' });
         expect(rowFor(manager, 'savedFilter:1').textContent).toContain('saved filter');
     });
 
@@ -92,12 +114,16 @@ describe('presentation', () => {
             .toContain('2 channels in the guide');
     });
 
-    it('reports catalogue loading and failure', () => {
-        const loading = mount({ catalogStatus: PoolStatus.LOADING, catalog: null });
+    it('reports catalogue loading and failure for the source being browsed', () => {
+        const loading = mount({ catalogStatus: { studio: PoolStatus.LOADING }, catalog: {} });
         expect(loading.manager.element.querySelector('.tvguide-manager-status').textContent)
             .toContain('Loading');
 
-        const failed = mount({ catalogStatus: PoolStatus.ERROR, catalogError: 'offline', catalog: null });
+        const failed = mount({
+            catalogStatus: { studio: PoolStatus.ERROR },
+            catalogError: { studio: 'offline' },
+            catalog: {}
+        });
         expect(failed.manager.element.querySelector('.tvguide-manager-status').textContent)
             .toContain('offline');
     });
@@ -130,7 +156,8 @@ describe('sorting', () => {
         const { manager } = mount({ sort: 'sceneCount' });
         const select = manager.element.querySelector('.tvguide-manager-sort');
         expect(select.value).toBe('sceneCount');
-        expect(Array.from(select.options).map((o) => o.value)).toEqual(['name', 'sceneCount', 'source']);
+        // "Source" is gone: the guide groups by source, so sorting by it did nothing.
+        expect(Array.from(select.options).map((o) => o.value)).toEqual(['name', 'sceneCount']);
     });
 
     it('changes the guide order', () => {
@@ -147,34 +174,30 @@ describe('sorting', () => {
 describe('lineup rules', () => {
     it('shows the rule as enabled with its threshold', () => {
         const { manager } = mount();
-        const section = manager.element.querySelectorAll('.tvguide-manager-section')[0];
+        const section = manager.element.querySelector('.tvguide-manager-section');
         expect(section.querySelector('input[type="checkbox"]').checked).toBe(true);
         expect(section.querySelector('.tvguide-manager-threshold').value).toBe('5');
     });
 
     it('disables the threshold when the rule is off', () => {
         const { manager } = mount({ lineup: [] });
-        const section = manager.element.querySelectorAll('.tvguide-manager-section')[0];
+        const section = manager.element.querySelector('.tvguide-manager-section');
         expect(section.querySelector('input[type="checkbox"]').checked).toBe(false);
         expect(section.querySelector('.tvguide-manager-threshold').disabled).toBe(true);
     });
 
     it('turning a rule off removes it from the lineup', () => {
         const { store, manager } = mount();
-        const checkbox = manager.element
-            .querySelectorAll('.tvguide-manager-section')[0]
-            .querySelector('input[type="checkbox"]');
+        const checkbox = manager.element.querySelector('.tvguide-manager-section input[type="checkbox"]');
         checkbox.checked = false;
         checkbox.dispatchEvent(new Event('change'));
 
         expect(store.getState().lineup).toEqual([]);
     });
 
-    it('turning a rule on adds it for that source only', () => {
-        const { store, manager } = mount({ lineup: [] });
-        const checkbox = manager.element
-            .querySelectorAll('.tvguide-manager-section')[1] // Tags
-            .querySelector('input[type="checkbox"]');
+    it('turning a rule on adds it for the source being browsed', () => {
+        const { store, manager } = mount({ lineup: [], managerSource: 'tag' });
+        const checkbox = manager.element.querySelector('.tvguide-manager-section input[type="checkbox"]');
         checkbox.checked = true;
         checkbox.dispatchEvent(new Event('change'));
 
@@ -183,9 +206,7 @@ describe('lineup rules', () => {
 
     it('changing the threshold updates the rule', () => {
         const { store, manager } = mount();
-        const threshold = manager.element
-            .querySelectorAll('.tvguide-manager-section')[0]
-            .querySelector('.tvguide-manager-threshold');
+        const threshold = manager.element.querySelector('.tvguide-manager-threshold');
         threshold.value = '20';
         threshold.dispatchEvent(new Event('change'));
 
@@ -201,9 +222,7 @@ describe('lineup rules', () => {
         const manager = createManager({ store });
         manager.render(store.getState());
 
-        const checkbox = manager.element
-            .querySelectorAll('.tvguide-manager-section')[0]
-            .querySelector('input[type="checkbox"]');
+        const checkbox = manager.element.querySelector('.tvguide-manager-section input[type="checkbox"]');
         checkbox.checked = true;
         checkbox.dispatchEvent(new Event('change'));
 
@@ -221,7 +240,7 @@ describe('adding and removing channels', () => {
     });
 
     it('adds a channel from another source entirely', () => {
-        const { store, manager } = mount();
+        const { store, manager } = mount({ managerSource: 'tag' });
         buttonLabelled(rowFor(manager, 'tag:9'), /Add to guide/).click();
 
         expect(store.getState().lineup).toContainEqual({ source: 'tag', ids: ['9'] });
@@ -247,7 +266,8 @@ describe('pinning and hiding', () => {
         const { store, manager } = mount();
         buttonLabelled(rowFor(manager, 'studio:2'), /Pin Bravo/).click();
 
-        expect(store.getState().channels.map((c) => c.id)).toEqual(['studio:2', 'studio:1']);
+        expect(store.getState().pinOrder).toEqual(['studio:2']);
+        expect(store.getState().channelGroups[0].key).toBe('pinned');
         expect(rowFor(manager, 'studio:2').classList.contains('is-pinned')).toBe(true);
     });
 
@@ -256,7 +276,7 @@ describe('pinning and hiding', () => {
         buttonLabelled(rowFor(manager, 'studio:2'), /Pin Bravo/).click();
         buttonLabelled(rowFor(manager, 'studio:2'), /Unpin Bravo/).click();
 
-        expect(store.getState().channels.map((c) => c.id)).toEqual(['studio:1', 'studio:2']);
+        expect(store.getState().pinOrder).toEqual([]);
     });
 
     it('hides a channel from the guide but keeps it listed here', () => {
@@ -367,5 +387,113 @@ describe('closing', () => {
         manager.element.querySelector('.tvguide-manager-close').click();
         expect(store.getState().managerOpen).toBe(false);
         expect(manager.element.hidden).toBe(true);
+    });
+});
+
+describe('bulk add and remove', () => {
+    const bulkButton = (manager, re) =>
+        Array.from(manager.element.querySelectorAll('.tvguide-manager-bulkbutton'))
+            .find((b) => re.test(b.textContent));
+
+    it('counts what each button would affect', () => {
+        // studio:1 and studio:2 are in the guide; studio:3 is below the rule.
+        const { manager } = mount();
+        expect(bulkButton(manager, /^Add all/).textContent).toBe('Add all (1)');
+        expect(bulkButton(manager, /^Remove all/).textContent).toBe('Remove all (2)');
+    });
+
+    it('adds everything currently listed', () => {
+        const { store, manager } = mount();
+        bulkButton(manager, /^Add all/).click();
+
+        const entry = store.getState().lineup.find((e) => Array.isArray(e.ids));
+        expect(entry.ids.sort()).toEqual(['1', '2', '3']);
+    });
+
+    it('drops the rule when adding, so nothing is swept back in', () => {
+        const { store, manager } = mount();
+        bulkButton(manager, /^Add all/).click();
+        expect(store.getState().lineup.some((e) => e.source === 'studio' && !e.ids)).toBe(false);
+    });
+
+    it('removes everything currently listed', () => {
+        const { store, manager } = mount();
+        bulkButton(manager, /^Remove all/).click();
+
+        const entry = store.getState().lineup.find((e) => e.source === 'studio' && e.ids);
+        expect(entry).toBeUndefined();
+    });
+
+    it('acts only on the filtered list, not the whole type', () => {
+        // The dropdown and the search box are how you scope a bulk action.
+        const { store, manager } = mount();
+        store.dispatch({ type: Events.MANAGER_SEARCH, query: 'alpha' });
+
+        bulkButton(manager, /^Remove all/).click();
+
+        const entry = store.getState().lineup.find((e) => e.source === 'studio' && e.ids);
+        // Bravo was not listed, so it survives as an explicit pick.
+        expect(entry.ids).toContain('2');
+        expect(entry.ids).not.toContain('1');
+    });
+
+    it('disables a button with nothing to do', () => {
+        // Everything listed is already in the guide, so there is nothing to add.
+        const { manager } = mount({
+            allChannels: CATALOG.studio,
+            channels: CATALOG.studio
+        });
+        expect(bulkButton(manager, /^Add all/).disabled).toBe(true);
+        expect(bulkButton(manager, /^Remove all/).disabled).toBe(false);
+    });
+
+    it('disables removing when nothing listed is in the guide', () => {
+        const { manager } = mount({ allChannels: [], channels: [] });
+        expect(bulkButton(manager, /^Remove all/).disabled).toBe(true);
+    });
+
+    it('confirms before adding a very large number of channels', () => {
+        const many = Array.from({ length: 250 }, (_, i) => ({
+            id: `tag:${i}`, source: 'tag', name: `Tag ${i}`, logo: {}, sceneCount: 3, sceneFilter: {}
+        }));
+        const { store, manager } = mount({
+            managerSource: 'tag',
+            lineup: [],
+            allChannels: [],
+            catalog: { ...CATALOG, tag: many }
+        });
+
+        const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+        bulkButton(manager, /^Add all/).click();
+
+        expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('250'));
+        expect(store.getState().lineup).toEqual([]);
+        confirmSpy.mockRestore();
+    });
+
+    it('proceeds when the confirmation is accepted', () => {
+        const many = Array.from({ length: 250 }, (_, i) => ({
+            id: `tag:${i}`, source: 'tag', name: `Tag ${i}`, logo: {}, sceneCount: 3, sceneFilter: {}
+        }));
+        const { store, manager } = mount({
+            managerSource: 'tag',
+            lineup: [],
+            allChannels: [],
+            catalog: { ...CATALOG, tag: many }
+        });
+
+        const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+        bulkButton(manager, /^Add all/).click();
+
+        expect(store.getState().lineup[0].ids).toHaveLength(250);
+        confirmSpy.mockRestore();
+    });
+
+    it('does not confirm for a small change', () => {
+        const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+        const { manager } = mount();
+        bulkButton(manager, /^Add all/).click();
+        expect(confirmSpy).not.toHaveBeenCalled();
+        confirmSpy.mockRestore();
     });
 });

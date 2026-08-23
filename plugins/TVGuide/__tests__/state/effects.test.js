@@ -17,7 +17,11 @@ function harness(overrides = {}) {
             return { findScenes: { scenes: [{ id: 'a', files: [{ duration: 600 }] }] } };
         }),
         cache: { get: jest.fn(() => null), set: jest.fn() },
-        viewer: { tune: jest.fn(), stop: jest.fn(), setMuted: jest.fn() },
+        viewer: {
+            tune: jest.fn(), stop: jest.fn(), setMuted: jest.fn(),
+            setPaused: jest.fn(), showPoster: jest.fn()
+        },
+        player: { setMode: jest.fn() },
         storage: { setItem: jest.fn() },
         announce: jest.fn(),
         navigate: jest.fn(),
@@ -254,14 +258,35 @@ describe('side effects on the page', () => {
 
 
 describe('loadCatalog', () => {
-    it('fetches every source and reports the catalogue', async () => {
+    it('fetches one source and reports it', async () => {
         const { run, dispatch, getState } = harness();
-        run({ type: 'loadCatalog' }, getState, dispatch);
+        run({ type: 'loadCatalog', source: 'studio' }, getState, dispatch);
         await flush();
 
         const call = dispatch.mock.calls.find((c) => c[0].type === Events.CATALOG_LOADED);
         expect(call).toBeDefined();
+        expect(call[0].source).toBe('studio');
         expect(call[0].catalog.studio[0].id).toBe('studio:1');
+    });
+
+    it('asks only for the requested source, not the whole library', async () => {
+        const fetchCatalogFn = jest.fn(async () => ({ catalog: {}, errors: [] }));
+        const { run, dispatch, getState } = harness({ fetchCatalogFn });
+
+        run({ type: 'loadCatalog', source: 'tag' }, getState, dispatch);
+        await flush();
+
+        expect(fetchCatalogFn.mock.calls[0][1]).toEqual(['tag']);
+    });
+
+    it('falls back to every source when none is named', async () => {
+        const fetchCatalogFn = jest.fn(async () => ({ catalog: {}, errors: [] }));
+        const { run, dispatch, getState } = harness({ fetchCatalogFn });
+
+        run({ type: 'loadCatalog' }, getState, dispatch);
+        await flush();
+
+        expect(fetchCatalogFn.mock.calls[0][1]).toBeUndefined();
     });
 
     it('still resolves when an individual source fails, since those are caught per-source', async () => {
@@ -293,5 +318,36 @@ describe('loadCatalog', () => {
             type: Events.CATALOG_FAILED,
             message: 'catalogue exploded'
         });
+    });
+});
+
+
+describe('player effects', () => {
+    it('applies a player mode', () => {
+        const { run, dispatch, getState, ctx } = harness();
+        run({ type: 'setPlayerMode', mode: 'theater' }, getState, dispatch);
+        expect(ctx.player.setMode).toHaveBeenCalledWith('theater');
+    });
+
+    it('pauses and resumes the viewer', () => {
+        const { run, dispatch, getState, ctx } = harness();
+        run({ type: 'setPaused', paused: true }, getState, dispatch);
+        expect(ctx.viewer.setPaused).toHaveBeenCalledWith(true);
+    });
+
+    it('shows a poster for a previewed scene', () => {
+        const { run, dispatch, getState, ctx } = harness();
+        const scene = { id: 's1' };
+        run({ type: 'showPoster', scene }, getState, dispatch);
+        expect(ctx.viewer.showPoster).toHaveBeenCalledWith(scene);
+    });
+
+    it('is a no-op without a viewer or player', () => {
+        const { run, dispatch, getState } = harness({ viewer: null, player: null });
+        expect(() => {
+            run({ type: 'setPlayerMode', mode: 'theater' }, getState, dispatch);
+            run({ type: 'setPaused', paused: true }, getState, dispatch);
+            run({ type: 'showPoster', scene: {} }, getState, dispatch);
+        }).not.toThrow();
     });
 });

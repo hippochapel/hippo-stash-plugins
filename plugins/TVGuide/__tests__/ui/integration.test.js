@@ -16,6 +16,8 @@ import { Events } from '../../src/state/actions.js';
 import { buildDaySchedule, dayBucket } from '../../src/domain/schedule.js';
 import { PoolStatus } from '../../src/state/initialState.js';
 import { createInitialState } from '../../src/state/initialState.js';
+import { groupChannels, flattenGroups } from '../../src/domain/channelPrefs.js';
+import { KNOWN_SOURCES } from '../../src/domain/lineup.js';
 
 const MIN = 60000;
 const NOON = new Date(2026, 7, 22, 12, 0, 0).getTime();
@@ -40,7 +42,7 @@ const channel = (id, name) => ({
 });
 
 function baseState(overrides = {}) {
-    return {
+    const state = {
         ...createInitialState(),
         open: true,
         nowMs: NOON,
@@ -56,6 +58,17 @@ function baseState(overrides = {}) {
         schedules: { 'studio:1': buildDaySchedule('studio:1', scenes(4), DAY_KEY) },
         ...overrides
     };
+
+    // The guide renders from groups now, so a fixture has to carry them.
+    state.channelGroups = groupChannels(state.allChannels, {
+        prefs: state.prefs,
+        pinOrder: state.pinOrder,
+        sort: state.sort,
+        sourceOrder: KNOWN_SOURCES,
+        collapsed: state.collapsedGroups
+    });
+    state.channels = flattenGroups(state.channelGroups);
+    return state;
 }
 
 beforeEach(() => {
@@ -78,8 +91,10 @@ describe('grid rendering', () => {
     it('uses ARIA grid roles', () => {
         const { grid } = mountGrid(baseState());
         expect(grid.element.querySelector('[role="grid"]')).not.toBeNull();
-        expect(grid.element.querySelectorAll('[role="row"]')).toHaveLength(2);
+        expect(grid.element.querySelectorAll('.tvguide-row')).toHaveLength(2);
         expect(grid.element.querySelectorAll('[role="rowheader"]')).toHaveLength(2);
+        // Plus a group header row for the Studios group.
+        expect(grid.element.querySelectorAll('.tvguide-group')).toHaveLength(1);
     });
 
     it('renders a row per channel with its name', () => {
@@ -155,11 +170,23 @@ describe('grid rendering', () => {
         expect(line.style.display).toBe('none');
     });
 
-    it('tunes the channel when a block is clicked', () => {
-        const { store, grid } = mountGrid(baseState());
+    it('tunes the channel when the live block is clicked', () => {
+        const { store, grid } = mountGrid(baseState({ tunedChannelId: 'studio:2' }));
         const row = grid.element.querySelector('[data-channel-id="studio:1"]');
-        row.querySelector('.tvguide-block').click();
+        row.querySelector('.tvguide-block-live').click();
         expect(store.getState().tunedChannelId).toBe('studio:1');
+        expect(store.getState().preview).toBeNull();
+    });
+
+    it('previews, rather than tunes, when a block that is not on is clicked', () => {
+        const { store, grid } = mountGrid(baseState());
+        const blocks = grid.element.querySelectorAll('[data-channel-id="studio:1"] .tvguide-block');
+        const future = [...blocks].find((b) => !b.classList.contains('tvguide-block-live'));
+
+        future.click();
+
+        expect(store.getState().preview).not.toBeNull();
+        expect(store.getState().viewerPaused).toBe(false);
     });
 
     it('previews a programme on hover', () => {
@@ -170,6 +197,7 @@ describe('grid rendering', () => {
         target.dispatchEvent(new MouseEvent('mouseenter'));
 
         expect(store.getState().focus.timeMs).toBe(Number(target.dataset.startMs));
+        expect(store.getState().focus.source).toBe('hover');
     });
 
     it('ignores the synthetic mouseenter that follows a tap', () => {
@@ -204,7 +232,6 @@ describe('grid rendering', () => {
         // so look the row up by channel rather than by position.
         const renamed = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-name');
         expect(renamed.textContent).toBe('Renamed');
-        expect(grid.element.querySelectorAll('.tvguide-row-name')[0].textContent).toBe('Channel Two');
     });
 
     it('updates the row badge when a custom logo is set', () => {
@@ -280,12 +307,9 @@ describe('list rendering', () => {
         expect(store.getState().tunedChannelId).toBe('studio:1');
     });
 
-    it('offers a labelled watch control only where something is playing', () => {
+    it('has no per-row watch button on mobile -- tapping the row already tunes', () => {
         const { list } = mountList(baseState({ layout: 'list' }));
-        const one = list.element.querySelector('[data-channel-id="studio:1"] .tvguide-list-expand');
-        const two = list.element.querySelector('[data-channel-id="studio:2"] .tvguide-list-expand');
-        expect(one.getAttribute('aria-label')).toMatch(/Watch Scene \d on Channel One/);
-        expect(two).toBeNull();
+        expect(list.element.querySelector('.tvguide-list-expand')).toBeNull();
     });
 
     it('reports load failures', () => {
@@ -299,15 +323,17 @@ describe('list rendering', () => {
 });
 
 describe('banner', () => {
-    it('describes the focused programme with a progress bar', () => {
+    it('describes the focused programme, with its poster', () => {
         const banner = createBanner();
         banner.render(baseState());
 
         expect(banner.element.querySelector('.tvguide-banner-title').textContent).toMatch(/Scene \d/);
         expect(banner.element.textContent).toContain('Channel One');
         expect(banner.element.textContent).toContain('Description');
-        expect(banner.element.querySelector('[role="progressbar"]')).not.toBeNull();
+        expect(banner.element.querySelector('.tvguide-banner-poster')).not.toBeNull();
         expect(banner.element.querySelector('.tvguide-live-badge')).not.toBeNull();
+        // Progress moved to the player, under the video.
+        expect(banner.element.querySelector('[role="progressbar"]')).toBeNull();
     });
 
     it('prompts when nothing is focused', () => {
@@ -334,7 +360,15 @@ describe('banner', () => {
 describe('overlay', () => {
     function mountOverlay(state) {
         const store = createStore({ initialState: state });
-        const viewer = { element: document.createElement('video'), tune: jest.fn(), stop: jest.fn(), setMuted: jest.fn() };
+        const viewer = {
+            element: document.createElement('video'),
+            tune: jest.fn(),
+            stop: jest.fn(),
+            setMuted: jest.fn(),
+            setPaused: jest.fn(),
+            showPoster: jest.fn(),
+            subscribe: jest.fn(() => () => {})
+        };
         const overlay = createOverlay({
             store,
             viewer,
@@ -392,25 +426,24 @@ describe('overlay', () => {
         expect(store.getState().windowStartMs).toBeGreaterThan(DAY_START);
     });
 
-    it('toggles mute from the viewer controls', () => {
+    it('toggles mute from the player controls', () => {
         const { store, overlay } = mountOverlay(baseState({ muted: true }));
         overlay.element.querySelector('.tvguide-mute').click();
         expect(store.getState().muted).toBe(false);
-        expect(overlay.element.querySelector('.tvguide-mute').textContent).toBe('Mute');
     });
 
-    it('names the tuned channel and its programme under the viewer', () => {
+    it('names the tuned channel and its programme under the player', () => {
         const { overlay } = mountOverlay(baseState());
-        expect(overlay.element.querySelector('.tvguide-viewer-caption').textContent).toMatch(
+        expect(overlay.element.querySelector('.tvguide-player-caption').textContent).toMatch(
             /Channel One · Scene \d/
         );
     });
 
-    it('hides the viewer entirely when autoplay is off', () => {
+    it('hides the player entirely when autoplay is off', () => {
         const state = baseState();
         state.settings = { ...state.settings, guide_autoplay: false };
         const { overlay } = mountOverlay(state);
-        expect(overlay.element.querySelector('.tvguide-viewer').hidden).toBe(true);
+        expect(overlay.element.querySelector('.tvguide-player').hidden).toBe(true);
     });
 
     it('toggles the shortcut help panel', () => {

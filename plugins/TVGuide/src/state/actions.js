@@ -23,6 +23,7 @@ export const Events = {
     PAN: 'PAN',
     GO_TO_NOW: 'GO_TO_NOW',
     FOCUS_CELL: 'FOCUS_CELL',
+    FOCUS_LIVE: 'FOCUS_LIVE',
     MOVE_FOCUS: 'MOVE_FOCUS',
     LAYOUT_CHANGED: 'LAYOUT_CHANGED',
     SET_MUTED: 'SET_MUTED',
@@ -31,14 +32,29 @@ export const Events = {
     PREFS_LOADED: 'PREFS_LOADED',
     SET_CHANNEL_PREF: 'SET_CHANNEL_PREF',
     TOGGLE_PIN: 'TOGGLE_PIN',
+    MOVE_PIN: 'MOVE_PIN',
+    TOGGLE_GROUP: 'TOGGLE_GROUP',
     TOGGLE_HIDDEN: 'TOGGLE_HIDDEN',
     SET_SORT: 'SET_SORT',
     SET_LINEUP: 'SET_LINEUP',
     MANAGER_OPEN: 'MANAGER_OPEN',
     MANAGER_CLOSE: 'MANAGER_CLOSE',
     MANAGER_SEARCH: 'MANAGER_SEARCH',
+    SET_MANAGER_SOURCE: 'SET_MANAGER_SOURCE',
     CATALOG_LOADED: 'CATALOG_LOADED',
-    CATALOG_FAILED: 'CATALOG_FAILED'
+    CATALOG_FAILED: 'CATALOG_FAILED',
+
+    // Player
+    SET_PLAYER_MODE: 'SET_PLAYER_MODE',
+    SET_VIEWER_PAUSED: 'SET_VIEWER_PAUSED',
+    PREVIEW: 'PREVIEW',
+    BACK_TO_LIVE: 'BACK_TO_LIVE',
+    RESUME_AFTER_HIDDEN: 'RESUME_AFTER_HIDDEN',
+
+    // Guide navigation
+    GUIDE_SEARCH: 'GUIDE_SEARCH',
+    SET_TYPE_FILTER: 'SET_TYPE_FILTER',
+    SET_HEAD_WIDTH: 'SET_HEAD_WIDTH'
 };
 
 export const Effects = {
@@ -49,7 +65,10 @@ export const Effects = {
         sceneFilter,
         poolCap
     }),
-    loadCatalog: () => ({ type: 'loadCatalog' }),
+    loadCatalog: (source) => ({ type: 'loadCatalog', source }),
+    setPlayerMode: (mode) => ({ type: 'setPlayerMode', mode }),
+    setPaused: (paused) => ({ type: 'setPaused', paused }),
+    showPoster: (scene) => ({ type: 'showPoster', scene }),
     reloadChannels: () => ({ type: 'loadChannels' }),
     /** Point the viewer at whatever is live on this channel right now. */
     tuneViewer: (channelId, scene, offsetMs) => ({ type: 'tuneViewer', channelId, scene, offsetMs }),
@@ -65,5 +84,9 @@ export const STORAGE_KEYS = {
     muted: 'tvguide_muted',
     lineup: 'tvguide_lineup',
     prefs: 'tvguide_channel_prefs',
-    sort: 'tvguide_sort'
+    sort: 'tvguide_sort',
+    pinOrder: 'tvguide_pin_order',
+    collapsed: 'tvguide_collapsed_groups',
+    headWidth: 'tvguide_head_width',
+    playerMode: 'tvguide_player_mode'
 };

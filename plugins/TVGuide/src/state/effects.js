@@ -17,6 +17,7 @@ export function createEffectRunner({
     gql,
     cache,
     viewer,
+    player,
     storage,
     announce,
     navigate,
@@ -88,12 +89,33 @@ export function createEffectRunner({
             }
 
             case 'loadCatalog':
+                // Fetched one source at a time: the full catalogue is many
+                // thousands of rows across studios, models and tags, and you
+                // only ever browse one type at once.
                 Promise.resolve()
-                    .then(() => fetchCatalogFn(gql))
+                    .then(() => fetchCatalogFn(gql, effect.source ? [effect.source] : undefined))
                     .then(
-                        ({ catalog }) => dispatch({ type: Events.CATALOG_LOADED, catalog }),
-                        (error) => dispatch({ type: Events.CATALOG_FAILED, message: error.message })
+                        ({ catalog }) =>
+                            dispatch({ type: Events.CATALOG_LOADED, source: effect.source, catalog }),
+                        (error) =>
+                            dispatch({
+                                type: Events.CATALOG_FAILED,
+                                source: effect.source,
+                                message: error.message
+                            })
                     );
+                return;
+
+            case 'setPlayerMode':
+                if (player) player.setMode(effect.mode);
+                return;
+
+            case 'setPaused':
+                if (viewer) viewer.setPaused(effect.paused);
+                return;
+
+            case 'showPoster':
+                if (viewer) viewer.showPoster(effect.scene);
                 return;
 
             case 'tuneViewer':

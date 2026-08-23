@@ -15,6 +15,7 @@ import { createGrid } from './grid.js';
 import { createList } from './list.js';
 import { trapFocus } from './a11y.js';
 import { createManager } from './manager.js';
+import { createPlayer } from './player.js';
 
 export const HASH = '#tvguide';
 export const BODY_CLASS = 'stash-tvguide-active';
@@ -39,33 +40,32 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     const grid = createGrid({ store, onRowVisible, touchGuard });
     const list = createList({ store, onRowVisible });
 
-    const viewerPanel = el(
-        'div',
-        { class: 'tvguide-viewer' },
-        viewer.element,
-        el(
-            'div',
-            { class: 'tvguide-viewer-controls' },
-            el('button', {
-                class: 'tvguide-mute',
-                type: 'button',
-                onclick: () =>
-                    store.dispatch({ type: Events.SET_MUTED, muted: !store.getState().muted })
-            }),
-            el('button', {
-                class: 'tvguide-expand',
-                type: 'button',
-                text: 'Watch',
-                onclick: () => {
-                    const { tunedChannelId } = store.getState();
-                    if (tunedChannelId) store.dispatch({ type: Events.EXPAND, channelId: tunedChannelId });
-                }
-            })
-        ),
-        el('p', { class: 'tvguide-viewer-caption' })
-    );
+    const player = createPlayer({ store, viewer });
 
     const status = el('div', { class: 'tvguide-status' });
+
+    // Panning has no meaning in the list layout -- there is no time window --
+    // so these are hidden there rather than shown as dead buttons.
+    const timeControls = el(
+        'div',
+        { class: 'tvguide-time-controls' },
+        panButton('‹‹', 'Pan back', () => pan(-1)),
+        el('button', {
+            class: 'tvguide-now',
+            type: 'button',
+            text: 'Now',
+            onclick: () => store.dispatch({ type: Events.GO_TO_NOW })
+        }),
+        panButton('››', 'Pan forward', () => pan(1))
+    );
+
+    const guideSearch = el('input', {
+        type: 'search',
+        class: 'tvguide-search',
+        'aria-label': 'Filter channels',
+        placeholder: 'Filter channels…',
+        oninput: (e) => store.dispatch({ type: Events.GUIDE_SEARCH, query: e.target.value })
+    });
     const stage = el('div', { class: 'tvguide-stage' });
 
     const helpPanel = el(
@@ -94,26 +94,36 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             'header',
             { class: 'tvguide-header' },
             banner.element,
-            viewerPanel,
-            el('button', {
-                class: 'tvguide-close',
-                type: 'button',
-                'aria-label': 'Close TV Guide',
-                text: '×',
-                onclick: () => close()
-            })
+            player.element,
+            // Its own slot rather than absolute positioning: overlaid, it sat on
+            // top of the banner text.
+            el(
+                'div',
+                { class: 'tvguide-close-slot' },
+                el('button', {
+                    class: 'tvguide-close',
+                    type: 'button',
+                    'aria-label': 'Close TV Guide',
+                    text: '×',
+                    onclick: () => close()
+                })
+            )
         ),
         el(
             'div',
             { class: 'tvguide-toolbar' },
-            panButton('‹‹', 'Pan back', () => pan(-1)),
+            timeControls,
+            guideSearch,
             el('button', {
-                class: 'tvguide-now',
+                class: 'tvguide-jump',
                 type: 'button',
-                text: 'Now',
-                onclick: () => store.dispatch({ type: Events.GO_TO_NOW })
+                text: '⊙ Current',
+                'aria-label': 'Jump to the channel playing now',
+                onclick: () => {
+                    const { tunedChannelId } = store.getState();
+                    if (tunedChannelId) grid.scrollChannelIntoView(tunedChannelId);
+                }
             }),
-            panButton('››', 'Pan forward', () => pan(1)),
             el('button', {
                 class: 'tvguide-manage',
                 type: 'button',
@@ -131,6 +141,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     let releaseFocus = null;
     let detachTouch = null;
     let mountedLayout = null;
+    let lockedScrollY = 0;
 
     function panButton(label, ariaLabel, onclick) {
         return el('button', { class: 'tvguide-pan', type: 'button', 'aria-label': ariaLabel, onclick }, label);
@@ -157,6 +168,12 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     function mount() {
         if (root.isConnected) return;
         document.body.appendChild(root);
+
+        // `overflow: hidden` alone does not lock scrolling in iOS Safari, which
+        // is why the page behind the guide could still be panned sideways on an
+        // iPad. Pinning the body is what actually holds it.
+        lockedScrollY = window.scrollY || 0;
+        document.body.style.top = `-${lockedScrollY}px`;
         document.body.classList.add(BODY_CLASS);
         releaseFocus = trapFocus(root);
         detachTouch = touchGuard.attach(root);
@@ -169,6 +186,8 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         detachTouch = null;
         releaseFocus = null;
         document.body.classList.remove(BODY_CLASS);
+        document.body.style.top = '';
+        window.scrollTo(0, lockedScrollY);
         root.remove();
     }
 
@@ -195,12 +214,17 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
                 replaceChildren(stage, view.element);
             }
 
+            timeControls.hidden = !sel.isGridLayout(state);
+            if (guideSearch.value !== state.guideSearch) guideSearch.value = state.guideSearch;
+
             banner.render(state);
             view.render(state);
             manager.render(state);
-            renderViewerPanel(state);
+            player.render(state);
             renderStatus(state);
         },
+
+        player,
 
         destroy() {
             grid.destroy();
@@ -208,21 +232,6 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             unmount();
         }
     };
-
-    function renderViewerPanel(state) {
-        const channel = sel.tunedChannel(state);
-        const live = channel ? sel.liveProgram(state, channel.id) : null;
-
-        const muteButton = viewerPanel.querySelector('.tvguide-mute');
-        muteButton.textContent = state.muted ? 'Unmute' : 'Mute';
-        muteButton.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
-
-        viewerPanel.querySelector('.tvguide-viewer-caption').textContent = channel
-            ? `${channel.name}${live ? ` · ${live.scene.title || 'Untitled'}` : ''}`
-            : '';
-
-        viewerPanel.hidden = !state.settings.guide_autoplay;
-    }
 
     function renderStatus(state) {
         if (sel.isLoading(state)) {

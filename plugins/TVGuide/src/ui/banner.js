@@ -36,7 +36,14 @@ export function createBanner() {
 
             replaceChildren(
                 root,
-                el('div', { class: 'tvguide-banner-logo' }, logoBadge(channel)),
+                scene.paths?.screenshot
+                    ? el('img', {
+                          class: 'tvguide-banner-poster',
+                          src: scene.paths.screenshot,
+                          alt: '',
+                          loading: 'lazy'
+                      })
+                    : el('div', { class: 'tvguide-banner-logo' }, logoBadge(channel)),
                 el(
                     'div',
                     { class: 'tvguide-banner-body' },
@@ -56,25 +63,9 @@ export function createBanner() {
                     scene.details
                         ? el('p', { class: 'tvguide-banner-details' }, scene.details)
                         : null,
-                    isLive ? progressBar(program, state.nowMs) : null
+                    null
                 )
             );
         }
     };
-}
-
-function progressBar(program, nowMs) {
-    const pct = Math.min(100, Math.max(0, ((nowMs - program.startMs) / program.durationMs) * 100));
-    return el(
-        'div',
-        {
-            class: 'tvguide-progress',
-            role: 'progressbar',
-            'aria-valuemin': '0',
-            'aria-valuemax': '100',
-            'aria-valuenow': String(Math.round(pct)),
-            'aria-label': 'Programme progress'
-        },
-        el('div', { class: 'tvguide-progress-fill', style: { width: `${pct}%` } })
-    );
 }

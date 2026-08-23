@@ -21,7 +21,11 @@ export function createEntityProvider(config) {
         filterType,
         collectionField,
         logoField,
-        sceneFilterKey
+        sceneFilterKey,
+        // studios/tags/groups take a HierarchicalMultiCriterionInput, which
+        // accepts `depth`. Performers take a plain MultiCriterionInput, which
+        // does not -- sending depth there fails validation.
+        hierarchical = true
     } = config;
 
     const query = `query ${queryName}($f: ${filterType}, $find: FindFilterType, $ids: [ID!]) {
@@ -55,7 +59,9 @@ export function createEntityProvider(config) {
                 logo: resolveLogo(entity[logoField], entity.name),
                 sceneCount: entity.scene_count ?? 0,
                 sceneFilter: {
-                    [sceneFilterKey]: { value: [entity.id], modifier: 'INCLUDES', depth: -1 }
+                    [sceneFilterKey]: hierarchical
+                        ? { value: [entity.id], modifier: 'INCLUDES', depth: -1 }
+                        : { value: [entity.id], modifier: 'INCLUDES' }
                 }
             }));
         }

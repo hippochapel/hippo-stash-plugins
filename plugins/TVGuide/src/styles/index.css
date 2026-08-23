@@ -28,6 +28,8 @@
     color: var(--tvguide-text);
     font-size: 14px;
     overflow: hidden;
+    /* Backstop: nothing inside should ever scroll the overlay sideways. */
+    overflow-x: hidden;
 }
 
 @media (prefers-color-scheme: light) {
@@ -41,7 +43,12 @@
     }
 }
 
+/* position:fixed, not just overflow:hidden -- iOS Safari ignores the latter and
+   lets the page behind the overlay keep scrolling. `top` is set from JS and the
+   scroll position restored on close. */
 body.stash-tvguide-active {
+    position: fixed;
+    width: 100%;
     overflow: hidden;
 }
 
@@ -62,6 +69,7 @@ body.stash-tvguide-active {
 .tvguide-header {
     position: relative;
     display: flex;
+    flex-wrap: wrap;
     gap: 16px;
     padding: 16px;
     background: var(--tvguide-surface);
@@ -143,10 +151,12 @@ body.stash-tvguide-active {
     white-space: nowrap;
 }
 
+.tvguide-close-slot {
+    flex: 0 0 auto;
+    align-self: flex-start;
+}
+
 .tvguide-close {
-    position: absolute;
-    top: 8px;
-    right: 8px;
     width: 32px;
     height: 32px;
     font-size: 22px;
@@ -157,6 +167,7 @@ body.stash-tvguide-active {
 
 .tvguide-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
@@ -165,6 +176,12 @@ body.stash-tvguide-active {
 
 .tvguide-status {
     margin-left: auto;
+    /* Without this a long status string cannot shrink and pushes the toolbar
+       wider than the viewport. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--tvguide-text-dim);
     font-size: 12px;
 }
@@ -179,7 +196,9 @@ body.stash-tvguide-active {
     cursor: pointer;
 }
 
-.tvguide-overlay button:hover { border-color: var(--tvguide-accent); }
+@media (hover: hover) {
+    .tvguide-overlay button:hover { border-color: var(--tvguide-accent); }
+}
 
 /* A visible focus ring is the whole basis of keyboard operation here. */
 .tvguide-overlay :focus-visible {
@@ -228,6 +247,7 @@ body.stash-tvguide-active {
 }
 
 .tvguide-grid-corner {
+    position: relative;
     flex: 0 0 var(--tvguide-head-width);
 }
 
@@ -235,6 +255,18 @@ body.stash-tvguide-active {
     position: relative;
     flex: 1 1 auto;
     height: 26px;
+    border-bottom: 1px solid var(--tvguide-border);
+}
+
+/* A tick label sits over its own boundary line. */
+.tvguide-tick::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -6px;
+    width: 1px;
+    height: 6px;
+    background: var(--tvguide-border);
 }
 
 .tvguide-tick {
@@ -247,23 +279,49 @@ body.stash-tvguide-active {
 }
 
 .tvguide-grid-scroll {
-    position: relative;
     flex: 1 1 auto;
     overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
     /* Vertical panning only; time is panned with the toolbar or the keyboard,
        so the browser never has to guess which axis a drag meant. */
     touch-action: pan-y;
+}
+
+/* The track overlay starts where the channel column ends, so a percentage
+   inside it is a percentage of the track -- which is what the now-line and the
+   gridlines are computed against. Positioning them against the whole scroll
+   container and adding a margin put the line progressively too far right. */
+.tvguide-grid-inner {
+    position: relative;
+    min-height: 100%;
+}
+
+.tvguide-track-overlay {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--tvguide-head-width);
+    right: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.tvguide-gridline {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--tvguide-border);
+    opacity: 0.5;
 }
 
 .tvguide-nowline {
     position: absolute;
     top: 0;
     bottom: 0;
-    left: 0;
     width: 2px;
-    margin-left: var(--tvguide-head-width);
     background: var(--tvguide-live);
-    pointer-events: none;
     z-index: 2;
 }
 
@@ -568,11 +626,14 @@ body.stash-tvguide-active {
 .tvguide-manager-sections {
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: 8px 16px 16px;
+    /* No top padding: a `position: sticky; top: 0` header sticks to the padding
+       box, so any padding here becomes a strip that rows scroll through above
+       the heading. */
+    padding: 0 16px 16px;
     touch-action: pan-y;
 }
 
-.tvguide-manager-section { margin-top: 16px; }
+.tvguide-manager-section { margin-top: 0; }
 
 .tvguide-manager-section-head {
     position: sticky;
@@ -662,4 +723,271 @@ body.stash-tvguide-active {
     .tvguide-manager-row-main { flex-wrap: wrap; }
     .tvguide-manager-row-actions { width: 100%; }
     .tvguide-manager-editor { padding-left: 0; }
+}
+
+/* ---------- guide chrome: type bar, rail, resizer, groups ---------- */
+
+.tvguide-typebar {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--tvguide-border);
+    overflow-x: auto;
+    touch-action: pan-x;
+}
+
+.tvguide-typebar[hidden] { display: none; }
+
+.tvguide-typebutton[aria-pressed='true'] {
+    border-color: var(--tvguide-accent);
+    color: var(--tvguide-accent);
+}
+
+.tvguide-search {
+    min-width: 140px;
+    max-width: 220px;
+    padding: 5px 10px;
+    border: 1px solid var(--tvguide-border);
+    border-radius: 4px;
+    background: var(--tvguide-surface-2);
+    color: var(--tvguide-text);
+}
+
+.tvguide-time-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tvguide-time-controls[hidden] { display: none; }
+
+/* A-Z rail, pinned to the left of the channel column. */
+.tvguide-rail {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 18px;
+    overflow: hidden;
+}
+
+.tvguide-rail-letter {
+    flex: 0 0 auto;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    color: var(--tvguide-text-dim);
+    font-size: 9px;
+    line-height: 1.15;
+    cursor: pointer;
+}
+
+.tvguide-resizer {
+    flex: 0 0 5px;
+    cursor: col-resize;
+    background: var(--tvguide-border);
+    touch-action: none;
+}
+
+.tvguide-group {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--tvguide-surface-2);
+    border-bottom: 1px solid var(--tvguide-border);
+}
+
+.tvguide-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    border: none !important;
+    border-radius: 0 !important;
+    background: none !important;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.tvguide-group-count { color: var(--tvguide-text-dim); font-weight: 400; }
+
+/* ---------- rows ---------- */
+
+.tvguide-row-head {
+    padding-left: 22px;
+}
+
+.tvguide-pin,
+.tvguide-logo-button {
+    flex: 0 0 auto;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    cursor: pointer;
+}
+
+.tvguide-pin { font-size: 14px; color: var(--tvguide-text-dim); }
+.tvguide-pin[aria-pressed='true'] { color: var(--tvguide-accent); }
+
+.tvguide-row-pinned { cursor: grab; }
+
+/* Condensed rows are laid out for readability, not to scale -- a two-minute
+   scene cannot carry a title at its true width. */
+.tvguide-row-track.is-condensed {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    padding: 4px 0;
+}
+
+.tvguide-row-track.is-condensed .tvguide-block {
+    position: static;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.tvguide-condensed-count {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border-radius: 4px;
+    background: var(--tvguide-surface-2);
+    color: var(--tvguide-text-dim);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* ---------- player ---------- */
+
+.tvguide-player {
+    flex: 0 0 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tvguide-player[hidden] { display: none; }
+
+.tvguide-player-stage {
+    position: relative;
+    background: #000;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.tvguide-player-stage .tvguide-viewer-video {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 0;
+}
+
+.tvguide-player-controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+    opacity: 1;
+    transition: opacity 0.15s ease;
+}
+
+/* Reveal on hover only where there is a pointer; on touch there is no hover to
+   reveal them with, so they stay visible. */
+@media (hover: hover) {
+    .tvguide-player-controls { opacity: 0; }
+    .tvguide-player-stage:hover .tvguide-player-controls,
+    .tvguide-player-stage:focus-within .tvguide-player-controls { opacity: 1; }
+}
+
+.tvguide-player-spacer { flex: 1 1 auto; }
+
+.tvguide-player-button,
+.tvguide-watch,
+.tvguide-back-to-live {
+    background: rgba(0, 0, 0, 0.55) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    color: #fff !important;
+}
+
+.tvguide-back-to-live[hidden] { display: none; }
+
+.tvguide-spinner {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #fff;
+    border-radius: 50%;
+    display: none;
+}
+
+.tvguide-player.is-loading .tvguide-spinner {
+    display: block;
+    animation: tvguide-spin 0.8s linear infinite;
+}
+
+@keyframes tvguide-spin {
+    to { transform: rotate(360deg); }
+}
+
+.tvguide-player-times,
+.tvguide-player-caption {
+    margin: 0;
+    color: var(--tvguide-text-dim);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tvguide-banner-poster {
+    flex: 0 0 auto;
+    width: 128px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--tvguide-surface-2);
+}
+
+/* Theater: the player takes the full width and the guide scrolls beneath it. */
+.tvguide-overlay:has(.tvguide-player[data-mode='theater']) {
+    overflow-y: auto;
+}
+
+.tvguide-overlay:has(.tvguide-player[data-mode='theater']) .tvguide-header {
+    flex-direction: column;
+}
+
+.tvguide-player[data-mode='theater'] {
+    flex: 1 1 100%;
+    width: 100%;
+    order: -1;
+}
+
+.tvguide-player[data-mode='fullscreen'] .tvguide-player-stage {
+    border-radius: 0;
+}
+
+.tvguide-manager-bulk { display: flex; gap: 6px; }
+
+@media (max-width: 767px) {
+    .tvguide-player { flex: 0 0 auto; width: 100%; }
+    .tvguide-rail { display: none; }
+    .tvguide-manager-bulk { width: 100%; }
 }

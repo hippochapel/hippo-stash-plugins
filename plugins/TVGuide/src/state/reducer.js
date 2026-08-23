@@ -11,7 +11,14 @@ import { Events, Effects, STORAGE_KEYS } from './actions.js';
 import { createInitialState, PoolStatus } from './initialState.js';
 import { buildDaySchedule, dayBucket, programAt } from '../domain/schedule.js';
 import { snapToStep, clampWindowStart, HALF_HOUR_MS } from '../domain/layout.js';
-import { visibleChannels, setPref, poolCapFor } from '../domain/channelPrefs.js';
+import {
+    groupChannels,
+    flattenGroups,
+    setPref,
+    poolCapFor,
+    togglePin,
+    movePin
+} from '../domain/channelPrefs.js';
 
 /** How far ahead of the current day panning is allowed to go. */
 const MAX_PAN_AHEAD_MS = 24 * 3600000;
@@ -29,8 +36,27 @@ const windowMsOf = (state) => state.settings.guide_window_hours * 3600000;
  * first channel still visible rather than pointing at nothing.
  */
 function withVisibleChannels(state) {
-    const channels = visibleChannels(state.allChannels, state.prefs, state.sort);
-    const next = { ...state, channels };
+    // The guide is always grouped, so the search box and the type filter narrow
+    // the candidates before grouping rather than hiding rows afterwards.
+    const query = state.guideSearch.trim().toLowerCase();
+    const candidates = state.allChannels.filter((channel) => {
+        if (state.typeFilter !== 'all' && channel.source !== state.typeFilter) return false;
+        if (query && !channel.name.toLowerCase().includes(query)) return false;
+        return true;
+    });
+
+    const channelGroups = groupChannels(candidates, {
+        prefs: state.prefs,
+        pinOrder: state.pinOrder,
+        sort: state.sort,
+        sourceOrder: state.sourceOrder,
+        collapsed: state.collapsedGroups
+    });
+
+    // Collapsed groups contribute no rows, so keyboard traversal cannot enter
+    // one -- the flattened list is exactly what is on screen.
+    const channels = flattenGroups(channelGroups);
+    const next = { ...state, channels, channelGroups };
 
     const stillThere = (id) => channels.some((c) => c.id === id);
 
@@ -58,6 +84,10 @@ function liveProgram(state, channelId, nowMs) {
 /** Tune effects are built in one place so TICK and TUNE cannot drift apart. */
 function tuneEffects(state, channelId, nowMs) {
     if (!state.settings.guide_autoplay) return [];
+    // A paused viewer must stay paused, and a preview owns the player until it
+    // is dismissed -- otherwise the programme-boundary watcher would restart
+    // playback underneath the user.
+    if (state.viewerPaused || state.preview) return [];
     const program = liveProgram(state, channelId, nowMs);
     if (!program) return [];
     return [Effects.tuneViewer(channelId, program.scene, program.elapsedMs)];
@@ -263,9 +293,36 @@ export function reduce(state, event) {
 
         case Events.FOCUS_CELL:
             return {
-                state: { ...state, focus: { channelId: event.channelId, timeMs: event.timeMs } },
+                state: {
+                    ...state,
+                    focus: {
+                        channelId: event.channelId,
+                        timeMs: event.timeMs,
+                        // Hover previews are transient; clicks and keyboard focus
+                        // are not. Mouse-leave only undoes a hover.
+                        source: event.source || 'sticky'
+                    }
+                },
                 effects
             };
+
+        case Events.FOCUS_LIVE: {
+            // The mouse left the grid: put the banner back on what is playing.
+            if (state.preview) return { state, effects };
+            const live = liveProgram(state, state.tunedChannelId, state.nowMs);
+            if (!live) return { state, effects };
+            return {
+                state: {
+                    ...state,
+                    focus: {
+                        channelId: state.tunedChannelId,
+                        timeMs: live.startMs,
+                        source: 'live'
+                    }
+                },
+                effects
+            };
+        }
 
         case Events.MOVE_FOCUS:
             return moveFocus(state, event);
@@ -280,7 +337,11 @@ export function reduce(state, event) {
                     ...state,
                     prefs: event.prefs,
                     sort: event.sort || state.sort,
-                    lineup: event.lineup || state.lineup
+                    lineup: event.lineup || state.lineup,
+                    pinOrder: event.pinOrder || state.pinOrder,
+                    collapsedGroups: event.collapsedGroups || state.collapsedGroups,
+                    headWidthPx: event.headWidthPx || state.headWidthPx,
+                    playerMode: event.playerMode || state.playerMode
                 }),
                 effects
             };
@@ -294,15 +355,46 @@ export function reduce(state, event) {
         }
 
         case Events.TOGGLE_PIN: {
-            // pinnedAt doubles as the pin order, so pinning stamps the clock
-            // and unpinning clears it.
-            const pinned = Boolean(state.prefs[event.channelId]?.pinnedAt);
-            const prefs = setPref(state.prefs, event.channelId, {
-                pinnedAt: pinned ? null : event.nowMs || state.nowMs || 1
-            });
+            const pinOrder = togglePin(state.pinOrder, event.channelId);
             return {
-                state: withVisibleChannels({ ...state, prefs }),
-                effects: [Effects.persist(STORAGE_KEYS.prefs, JSON.stringify(prefs))]
+                state: withVisibleChannels({ ...state, pinOrder }),
+                effects: [Effects.persist(STORAGE_KEYS.pinOrder, JSON.stringify(pinOrder))]
+            };
+        }
+
+        case Events.MOVE_PIN: {
+            const pinOrder = movePin(state.pinOrder, event.channelId, event.toIndex);
+            if (pinOrder === state.pinOrder) return { state, effects };
+            return {
+                state: withVisibleChannels({ ...state, pinOrder }),
+                effects: [Effects.persist(STORAGE_KEYS.pinOrder, JSON.stringify(pinOrder))]
+            };
+        }
+
+        case Events.TOGGLE_GROUP: {
+            const collapsedGroups = state.collapsedGroups.includes(event.key)
+                ? state.collapsedGroups.filter((k) => k !== event.key)
+                : [...state.collapsedGroups, event.key];
+            return {
+                state: withVisibleChannels({ ...state, collapsedGroups }),
+                effects: [Effects.persist(STORAGE_KEYS.collapsed, JSON.stringify(collapsedGroups))]
+            };
+        }
+
+        case Events.GUIDE_SEARCH:
+            if (event.query === state.guideSearch) return { state, effects };
+            return { state: withVisibleChannels({ ...state, guideSearch: event.query }), effects };
+
+        case Events.SET_TYPE_FILTER:
+            if (event.typeFilter === state.typeFilter) return { state, effects };
+            return { state: withVisibleChannels({ ...state, typeFilter: event.typeFilter }), effects };
+
+        case Events.SET_HEAD_WIDTH: {
+            const headWidthPx = Math.min(480, Math.max(120, Math.round(event.px)));
+            if (headWidthPx === state.headWidthPx) return { state, effects };
+            return {
+                state: { ...state, headWidthPx },
+                effects: [Effects.persist(STORAGE_KEYS.headWidth, String(headWidthPx))]
             };
         }
 
@@ -335,11 +427,24 @@ export function reduce(state, event) {
 
         case Events.MANAGER_OPEN: {
             const next = { ...state, managerOpen: true };
-            // The catalogue is thousands of rows on a large library, so it is
-            // fetched once, the first time the manager is actually opened.
-            if (state.catalogStatus === PoolStatus.IDLE) {
-                next.catalogStatus = PoolStatus.LOADING;
-                effects.push(Effects.loadCatalog());
+            const source = event.source || state.managerSource;
+            next.managerSource = source;
+
+            // One source at a time, fetched the first time it is opened: the
+            // whole catalogue is many thousands of rows on a large library.
+            if (!state.catalogStatus[source]) {
+                next.catalogStatus = { ...state.catalogStatus, [source]: PoolStatus.LOADING };
+                effects.push(Effects.loadCatalog(source));
+            }
+            return { state: next, effects };
+        }
+
+        case Events.SET_MANAGER_SOURCE: {
+            if (event.source === state.managerSource) return { state, effects };
+            const next = { ...state, managerSource: event.source };
+            if (!state.catalogStatus[event.source]) {
+                next.catalogStatus = { ...state.catalogStatus, [event.source]: PoolStatus.LOADING };
+                effects.push(Effects.loadCatalog(event.source));
             }
             return { state: next, effects };
         }
@@ -350,22 +455,93 @@ export function reduce(state, event) {
         case Events.MANAGER_SEARCH:
             return { state: { ...state, managerSearch: event.query }, effects };
 
-        case Events.CATALOG_LOADED:
+        case Events.CATALOG_LOADED: {
+            const source = event.source || state.managerSource;
             return {
                 state: {
                     ...state,
-                    catalog: event.catalog,
-                    catalogStatus: PoolStatus.READY,
-                    catalogError: null
+                    catalog: { ...state.catalog, ...event.catalog },
+                    catalogStatus: { ...state.catalogStatus, [source]: PoolStatus.READY },
+                    catalogError: { ...state.catalogError, [source]: null }
                 },
                 effects
             };
+        }
 
-        case Events.CATALOG_FAILED:
+        case Events.CATALOG_FAILED: {
+            const source = event.source || state.managerSource;
             return {
-                state: { ...state, catalogStatus: PoolStatus.ERROR, catalogError: event.message },
+                state: {
+                    ...state,
+                    catalogStatus: { ...state.catalogStatus, [source]: PoolStatus.ERROR },
+                    catalogError: { ...state.catalogError, [source]: event.message }
+                },
                 effects
             };
+        }
+
+        case Events.SET_PLAYER_MODE:
+            if (event.mode === state.playerMode) return { state, effects };
+            return {
+                state: { ...state, playerMode: event.mode },
+                effects: [
+                    Effects.setPlayerMode(event.mode),
+                    Effects.persist(STORAGE_KEYS.playerMode, event.mode)
+                ]
+            };
+
+        case Events.SET_VIEWER_PAUSED: {
+            if (event.paused === state.viewerPaused) return { state, effects };
+            const next = { ...state, viewerPaused: event.paused };
+            if (event.paused) return { state: next, effects: [Effects.setPaused(true)] };
+            // Resuming re-syncs to live rather than continuing from where it
+            // stopped: a paused channel has fallen behind its own schedule.
+            return { state: next, effects: tuneEffects(next, next.tunedChannelId, state.nowMs) };
+        }
+
+        case Events.PREVIEW: {
+            const schedule = state.schedules[event.channelId];
+            if (!schedule) return { state, effects };
+            const program = programAt(schedule, event.timeMs, state.dayStartMs);
+            if (!program) return { state, effects };
+
+            // Clicking something already live is not a preview -- it is tuning.
+            const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
+            if (isLive) {
+                return reduce(state, { type: Events.TUNE, channelId: event.channelId });
+            }
+
+            return {
+                state: {
+                    ...state,
+                    preview: { channelId: event.channelId, scene: program.scene, startMs: program.startMs },
+                    focus: { channelId: event.channelId, timeMs: program.startMs, source: 'sticky' }
+                },
+                effects: [Effects.setPaused(true), Effects.showPoster(program.scene)]
+            };
+        }
+
+        case Events.BACK_TO_LIVE: {
+            if (!state.preview) return { state, effects };
+            const next = { ...state, preview: null, viewerPaused: false };
+            const live = liveProgram(next, next.tunedChannelId, state.nowMs);
+            if (live) {
+                next.focus = {
+                    channelId: next.tunedChannelId,
+                    timeMs: live.startMs,
+                    source: 'sticky'
+                };
+            }
+            return { state: next, effects: tuneEffects(next, next.tunedChannelId, state.nowMs) };
+        }
+
+        case Events.RESUME_AFTER_HIDDEN: {
+            // Returning from another app leaves the element paused with no event
+            // that drift correction can act on, so playback is re-established
+            // explicitly.
+            if (!state.open || state.viewerPaused || state.preview) return { state, effects };
+            return { state, effects: tuneEffects(state, state.tunedChannelId, state.nowMs) };
+        }
 
         case Events.SET_MUTED:
             return {
@@ -396,7 +572,10 @@ function moveFocus(state, event) {
         const nextIndex = Math.min(state.channels.length - 1, Math.max(0, index + event.delta));
         if (nextIndex === index) return { state, effects };
         return {
-            state: { ...state, focus: { channelId: state.channels[nextIndex].id, timeMs } },
+            state: {
+                ...state,
+                focus: { channelId: state.channels[nextIndex].id, timeMs, source: 'keyboard' }
+            },
             effects
         };
     }
@@ -414,7 +593,7 @@ function moveFocus(state, event) {
     // schedule loops, so every instant maps to some programme.
     const neighbour = programAt(schedule, target, state.dayStartMs);
 
-    const next = { ...state, focus: { channelId, timeMs: neighbour.startMs } };
+    const next = { ...state, focus: { channelId, timeMs: neighbour.startMs, source: 'keyboard' } };
 
     // Follow the focus if it walked off the visible window.
     const windowMs = windowMsOf(state);

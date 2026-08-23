@@ -21,6 +21,47 @@ export const tunedChannel = (state) =>
 export const poolStatus = (state, channelId) =>
     state.pools[channelId]?.status || PoolStatus.IDLE;
 
+export const channelGroups = (state) => state.channelGroups;
+export const playerMode = (state) => state.playerMode;
+export const isViewerPaused = (state) => state.viewerPaused;
+export const preview = (state) => state.preview;
+export const isPreviewing = (state) => state.preview !== null;
+export const headWidthPx = (state) => state.headWidthPx;
+export const guideSearch = (state) => state.guideSearch;
+export const typeFilter = (state) => state.typeFilter;
+
+/**
+ * Which type buttons the guide should offer.
+ *
+ * Built from the sources that actually produced channels, so a library with no
+ * groups never shows a dead Groups button. Below two types there is nothing to
+ * choose between, so the bar is not worth its space.
+ */
+export function availableTypes(state) {
+    const present = new Set(state.allChannels.map((c) => c.source));
+    if (present.size < 2) return [];
+    return state.sourceOrder.filter((source) => present.has(source));
+}
+
+/** First letters present, for the A-Z rail. */
+export function availableLetters(state) {
+    const letters = new Set();
+    for (const channel of state.allChannels) {
+        const first = (channel.name || '').trim().charAt(0).toUpperCase();
+        letters.add(/[A-Z]/.test(first) ? first : '#');
+    }
+    return [...letters].sort();
+}
+
+/** The first visible channel whose name starts with `letter`. */
+export function firstChannelForLetter(state, letter) {
+    const match = state.channels.find((channel) => {
+        const first = (channel.name || '').trim().charAt(0).toUpperCase();
+        return letter === '#' ? !/[A-Z]/.test(first) : first === letter;
+    });
+    return match ? match.id : null;
+}
+
 /** Clock labels across the head of the grid. */
 export const ticks = (state) => timeTicks(state.windowStartMs, windowMs(state), HALF_HOUR_MS);
 
@@ -93,8 +134,11 @@ export const sourceErrors = (state) => state.sourceErrors;
 
 export const isManagerOpen = (state) => state.managerOpen;
 export const sortMode = (state) => state.sort;
-export const catalogStatus = (state) => state.catalogStatus;
-export const catalogError = (state) => state.catalogError;
+export const managerSource = (state) => state.managerSource;
+export const catalogStatus = (state, source = state.managerSource) =>
+    state.catalogStatus[source] || PoolStatus.IDLE;
+export const catalogError = (state, source = state.managerSource) =>
+    state.catalogError[source] || null;
 
 /** The rule entry for a source, if the lineup has one. */
 export function lineupRule(state, source) {
@@ -108,7 +152,7 @@ export function lineupRule(state, source) {
  * library can hold hundreds of tags -- a round trip per keystroke would be
  * slower and no more accurate.
  */
-export function catalogRows(state, source) {
+export function catalogRows(state, source = state.managerSource) {
     const rows = state.catalog?.[source] || [];
     const query = state.managerSearch.trim().toLowerCase();
     const filtered = query ? rows.filter((c) => c.name.toLowerCase().includes(query)) : rows;
@@ -120,7 +164,7 @@ export function catalogRows(state, source) {
         // "In the guide" means resolved from the lineup, whether by a rule or
         // by an explicit pick -- hiding is a separate axis.
         included: live.has(channel.id),
-        pinned: Boolean(state.prefs[channel.id]?.pinnedAt),
+        pinned: state.pinOrder.includes(channel.id),
         hidden: Boolean(state.prefs[channel.id]?.hidden),
         pref: state.prefs[channel.id] || null
     }));

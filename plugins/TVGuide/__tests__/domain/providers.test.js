@@ -1,6 +1,7 @@
 import studio from '../../src/domain/providers/studio.js';
 import tag from '../../src/domain/providers/tag.js';
 import group from '../../src/domain/providers/group.js';
+import performer from '../../src/domain/providers/performer.js';
 import savedFilter from '../../src/domain/providers/savedFilter.js';
 import { PROVIDERS, resolveLineup, fetchCatalog } from '../../src/domain/providers/index.js';
 import { KNOWN_SOURCES } from '../../src/domain/lineup.js';
@@ -26,6 +27,14 @@ describe('entity providers', () => {
         { provider: tag, root: 'findTags', coll: 'tags', logo: 'image_path', key: 'tags' },
         { provider: group, root: 'findGroups', coll: 'groups', logo: 'front_image_path', key: 'groups' }
     ];
+
+    it.each(cases)('$provider.source sends depth, being hierarchical', async (c) => {
+        const gql = async () => ({
+            [c.root]: { [c.coll]: [{ id: '7', name: 'T', [c.logo]: null, scene_count: 1 }] }
+        });
+        const [channel] = await c.provider.listChannels({ source: c.provider.source }, gql);
+        expect(channel.sceneFilter[c.key].depth).toBe(-1);
+    });
 
     it.each(cases)('$provider.source queries $root and builds a $key scene filter', async (c) => {
         const gql = jest.fn(async () => ({
@@ -101,6 +110,48 @@ describe('entity providers', () => {
     it('returns nothing for an empty or malformed response', async () => {
         expect(await studio.listChannels({ source: 'studio' }, async () => ({}))).toEqual([]);
         expect(await studio.listChannels({ source: 'studio' }, async () => null)).toEqual([]);
+    });
+});
+
+describe('performer provider (Models)', () => {
+    const rows = (list) => async () => ({ findPerformers: { performers: list } });
+
+    it('builds a performers scene filter', async () => {
+        const gql = jest.fn(rows([{ id: '7', name: 'Riley', image_path: '/p.png', scene_count: 40 }]));
+        const [channel] = await performer.listChannels({ source: 'performer', minScenes: 5 }, gql);
+
+        expect(channel.id).toBe('performer:7');
+        expect(channel.name).toBe('Riley');
+        expect(channel.sceneCount).toBe(40);
+        expect(gql.mock.calls[0][0]).toContain('findPerformers');
+    });
+
+    it('sends NO depth, because performers are not hierarchical', async () => {
+        // SceneFilterType.performers is a MultiCriterionInput; sending `depth`
+        // there fails GraphQL validation.
+        const [channel] = await performer.listChannels(
+            { source: 'performer' },
+            rows([{ id: '7', name: 'Riley', image_path: null, scene_count: 1 }])
+        );
+        expect(channel.sceneFilter).toEqual({
+            performers: { value: ['7'], modifier: 'INCLUDES' }
+        });
+        expect(channel.sceneFilter.performers).not.toHaveProperty('depth');
+    });
+
+    it('still sends depth for the hierarchical sources', () => {
+        // Guards against the flag being applied everywhere by accident.
+        for (const p of [studio, tag, group]) {
+            expect(p.query).toBeDefined();
+        }
+    });
+
+    it('filters by scene count like the other entity sources', async () => {
+        const gql = jest.fn(rows([]));
+        await performer.listChannels({ source: 'performer', minScenes: 10 }, gql);
+        expect(gql.mock.calls[0][1].f).toEqual({
+            scene_count: { value: 9, modifier: 'GREATER_THAN' }
+        });
     });
 });
 

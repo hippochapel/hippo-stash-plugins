@@ -6,7 +6,9 @@ import {
     buildDaySchedule,
     programAt,
     scheduleBetween,
-    MAX_SCHEDULE_WALK
+    MAX_SCHEDULE_WALK,
+    condenseRow,
+    shouldCondense
 } from '../../src/domain/schedule.js';
 
 const HOUR = 3600000;
@@ -280,5 +282,101 @@ describe('scheduleBetween', () => {
     it('returns nothing when the window is inverted or empty', () => {
         expect(scheduleBetween(sched, DAY_START, DAY_START + HOUR, DAY_START)).toEqual([]);
         expect(scheduleBetween(sched, DAY_START, DAY_START, DAY_START)).toEqual([]);
+    });
+});
+
+describe('shouldCondense', () => {
+    const rows = (n) => Array.from({ length: n }, () => ({}));
+
+    it('leaves a normal row alone', () => {
+        // 6 blocks across 1200px is 200px each -- plenty for a title.
+        expect(shouldCondense(rows(6), 1200)).toBe(false);
+    });
+
+    it('condenses a row of slivers', () => {
+        // 40 blocks across 1200px is 30px each.
+        expect(shouldCondense(rows(40), 1200)).toBe(true);
+    });
+
+    it('never condenses a row with few enough blocks to read', () => {
+        expect(shouldCondense(rows(3), 100)).toBe(false);
+        expect(shouldCondense(rows(0), 100)).toBe(false);
+    });
+
+    it('depends on the available width, not the count alone', () => {
+        expect(shouldCondense(rows(10), 3000)).toBe(false);
+        expect(shouldCondense(rows(10), 600)).toBe(true);
+    });
+
+    it('tolerates junk', () => {
+        expect(shouldCondense(null, 1000)).toBe(false);
+    });
+});
+
+describe('condenseRow', () => {
+    const MIN_ = 60000;
+    const BASE = new Date(2026, 7, 22, 12, 0, 0).getTime();
+
+    /** n back-to-back 2-minute programmes. */
+    const strip = (n) =>
+        Array.from({ length: n }, (_, i) => ({
+            scene: { id: `s${i}`, title: `Scene ${i}` },
+            startMs: BASE + i * 2 * MIN_,
+            endMs: BASE + (i + 1) * 2 * MIN_
+        }));
+
+    const kinds = (segs) => segs.map((s) => (s.kind === 'count' ? `+${s.n}` : s.program.scene.id));
+
+    it('produces count / prev / current / next / count around the anchor', () => {
+        const programs = strip(30);
+        const anchor = programs[10].startMs + MIN_;
+        expect(kinds(condenseRow(programs, anchor))).toEqual(['+9', 's9', 's10', 's11', '+18']);
+    });
+
+    it('names the anchored programme', () => {
+        const programs = strip(30);
+        const segs = condenseRow(programs, programs[10].startMs);
+        const named = segs.filter((s) => s.kind === 'program').map((s) => s.program.scene.id);
+        expect(named).toContain('s10');
+    });
+
+    it('counts every programme it hid', () => {
+        const programs = strip(30);
+        const segs = condenseRow(programs, programs[10].startMs);
+        const hidden = segs.filter((s) => s.kind === 'count').reduce((sum, s) => sum + s.n, 0);
+        const shown = segs.filter((s) => s.kind === 'program').length;
+        expect(hidden + shown).toBe(30);
+    });
+
+    it('keeps a full label window when the anchor is at the very start', () => {
+        const programs = strip(30);
+        expect(kinds(condenseRow(programs, programs[0].startMs))).toEqual(['s0', 's1', 's2', '+27']);
+    });
+
+    it('keeps a full label window when the anchor is at the very end', () => {
+        const programs = strip(30);
+        expect(kinds(condenseRow(programs, programs[29].startMs))).toEqual(['+27', 's27', 's28', 's29']);
+    });
+
+    it('falls back to an edge when the anchor is outside the row', () => {
+        const programs = strip(30);
+        expect(kinds(condenseRow(programs, BASE - 5 * MIN_))[0]).toBe('s0');
+        expect(kinds(condenseRow(programs, BASE + 1000 * MIN_)).pop()).toBe('s29');
+    });
+
+    it('honours a wider label window', () => {
+        const programs = strip(30);
+        expect(kinds(condenseRow(programs, programs[10].startMs, 5)))
+            .toEqual(['+8', 's8', 's9', 's10', 's11', 's12', '+17']);
+    });
+
+    it('does not condense a row that already fits', () => {
+        const programs = strip(3);
+        expect(kinds(condenseRow(programs, programs[0].startMs))).toEqual(['s0', 's1', 's2']);
+    });
+
+    it('returns nothing for an empty row', () => {
+        expect(condenseRow([], BASE)).toEqual([]);
+        expect(condenseRow(null, BASE)).toEqual([]);
     });
 });

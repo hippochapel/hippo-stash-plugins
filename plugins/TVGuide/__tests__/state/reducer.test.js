@@ -1,4 +1,5 @@
 import { reduce } from '../../src/state/reducer.js';
+import { KNOWN_SOURCES } from '../../src/domain/lineup.js';
 import { createInitialState, PoolStatus } from '../../src/state/initialState.js';
 import { Events, STORAGE_KEYS } from '../../src/state/actions.js';
 import { buildDaySchedule, dayBucket } from '../../src/domain/schedule.js';
@@ -459,12 +460,12 @@ describe('focus movement', () => {
             channelId: 'studio:2',
             timeMs: NOON + MIN
         });
-        expect(state.focus).toEqual({ channelId: 'studio:2', timeMs: NOON + MIN });
+        expect(state.focus).toEqual({ channelId: 'studio:2', timeMs: NOON + MIN, source: 'sticky' });
     });
 
     it('moves down a channel keeping the time position', () => {
         const { state } = run(readyState(), { type: Events.MOVE_FOCUS, axis: 'channel', delta: 1 });
-        expect(state.focus).toEqual({ channelId: 'studio:2', timeMs: NOON });
+        expect(state.focus).toEqual({ channelId: 'studio:2', timeMs: NOON, source: 'keyboard' });
     });
 
     it('stops at the first and last channel', () => {
@@ -656,38 +657,43 @@ describe('channel manager', () => {
     });
 
     describe('pinning', () => {
-        it('lifts a pinned channel to the top', () => {
-            const { state } = run(managerState(), {
-                type: Events.TOGGLE_PIN,
-                channelId: 'studio:2',
-                nowMs: 5000
-            });
+        it('lifts a pinned channel into the pinned group at the top', () => {
+            const { state } = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' });
             expect(state.channels.map((c) => c.id)).toEqual(['studio:2', 'studio:1']);
+            expect(state.channelGroups[0].key).toBe('pinned');
         });
 
         it('unpins', () => {
-            const pinned = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2', nowMs: 5000 }).state;
+            const pinned = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' }).state;
             const { state } = run(pinned, { type: Events.TOGGLE_PIN, channelId: 'studio:2' });
+            expect(state.pinOrder).toEqual([]);
             expect(state.channels.map((c) => c.id)).toEqual(['studio:1', 'studio:2']);
-            expect(state.prefs['studio:2']).toBeUndefined();
         });
 
-        it('stamps the pin time from the clock when the event omits it', () => {
-            const { state } = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' });
-            expect(state.prefs['studio:2'].pinnedAt).toBe(NOON);
+        it('keeps pins in the order they were pinned', () => {
+            let s2 = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' }).state;
+            s2 = run(s2, { type: Events.TOGGLE_PIN, channelId: 'studio:1' }).state;
+            expect(s2.pinOrder).toEqual(['studio:2', 'studio:1']);
         });
 
-        it('still records a pin order when the clock has not started', () => {
-            const { state } = run(managerState({ nowMs: 0 }), {
-                type: Events.TOGGLE_PIN,
-                channelId: 'studio:2'
-            });
-            expect(state.prefs['studio:2'].pinnedAt).toBe(1);
+        it('reorders a pin, which a timestamp could never express', () => {
+            let s2 = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' }).state;
+            s2 = run(s2, { type: Events.TOGGLE_PIN, channelId: 'studio:1' }).state;
+
+            const { state } = run(s2, { type: Events.MOVE_PIN, channelId: 'studio:1', toIndex: 0 });
+
+            expect(state.pinOrder).toEqual(['studio:1', 'studio:2']);
+            expect(state.channels.map((c) => c.id)).toEqual(['studio:1', 'studio:2']);
         });
 
-        it('persists the change', () => {
+        it('ignores a move for a channel that is not pinned', () => {
+            const state = managerState();
+            expect(run(state, { type: Events.MOVE_PIN, channelId: 'studio:1', toIndex: 0 }).state).toBe(state);
+        });
+
+        it('persists the pin order, not the prefs', () => {
             const { effects } = run(managerState(), { type: Events.TOGGLE_PIN, channelId: 'studio:2' });
-            expect(effects.find((e) => e.type === 'persist').key).toBe(STORAGE_KEYS.prefs);
+            expect(effects.find((e) => e.type === 'persist').key).toBe(STORAGE_KEYS.pinOrder);
         });
     });
 
@@ -725,13 +731,43 @@ describe('channel manager', () => {
             const { state, effects } = run(managerState(), { type: Events.MANAGER_OPEN });
             expect(state.managerOpen).toBe(true);
             expect(effectTypes(effects)).toEqual(['loadCatalog']);
-            expect(state.catalogStatus).toBe(PoolStatus.LOADING);
+            expect(state.catalogStatus.studio).toBe(PoolStatus.LOADING);
+        });
+
+        it('fetches only the source being browsed, not the whole catalogue', () => {
+            const { effects } = run(managerState(), { type: Events.MANAGER_OPEN });
+            expect(effects[0].source).toBe('studio');
+        });
+
+        it('fetches a source the first time it is selected', () => {
+            const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
+            const { state, effects } = run(open, { type: Events.SET_MANAGER_SOURCE, source: 'tag' });
+
+            expect(state.managerSource).toBe('tag');
+            expect(effects).toEqual([{ type: 'loadCatalog', source: 'tag' }]);
+        });
+
+        it('does not refetch a source it already has', () => {
+            const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
+            const loaded = run(open, {
+                type: Events.CATALOG_LOADED,
+                source: 'tag',
+                catalog: { tag: [] }
+            }).state;
+            const selected = run(loaded, { type: Events.SET_MANAGER_SOURCE, source: 'tag' }).state;
+
+            expect(run(selected, { type: Events.SET_MANAGER_SOURCE, source: 'tag' }).effects).toEqual([]);
         });
 
         it('does not refetch the catalogue on a later open', () => {
-            const loaded = run(managerState(), { type: Events.CATALOG_LOADED, catalog: { studio: [] } }).state;
-            const { effects } = run(loaded, { type: Events.MANAGER_OPEN });
-            expect(effects).toEqual([]);
+            const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
+            const loaded = run(open, {
+                type: Events.CATALOG_LOADED,
+                source: 'studio',
+                catalog: { studio: [] }
+            }).state;
+            const closed = run(loaded, { type: Events.MANAGER_CLOSE }).state;
+            expect(run(closed, { type: Events.MANAGER_OPEN }).effects).toEqual([]);
         });
 
         it('closes', () => {
@@ -746,15 +782,52 @@ describe('channel manager', () => {
 
         it('stores a loaded catalogue', () => {
             const catalog = { studio: [channel('studio:9', 'Nine')] };
-            const { state } = run(managerState(), { type: Events.CATALOG_LOADED, catalog });
-            expect(state.catalog).toBe(catalog);
-            expect(state.catalogStatus).toBe(PoolStatus.READY);
+            const { state } = run(managerState(), {
+                type: Events.CATALOG_LOADED,
+                source: 'studio',
+                catalog
+            });
+            expect(state.catalog.studio).toEqual(catalog.studio);
+            expect(state.catalogStatus.studio).toBe(PoolStatus.READY);
+        });
+
+        it('keeps catalogues for sources already fetched', () => {
+            const first = run(managerState(), {
+                type: Events.CATALOG_LOADED,
+                source: 'studio',
+                catalog: { studio: [channel('studio:9', 'Nine')] }
+            }).state;
+            const { state } = run(first, {
+                type: Events.CATALOG_LOADED,
+                source: 'tag',
+                catalog: { tag: [] }
+            });
+            expect(state.catalog.studio).toHaveLength(1);
+            expect(state.catalogStatus.studio).toBe(PoolStatus.READY);
+        });
+
+        it('falls back to the source being browsed when the event omits one', () => {
+            const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
+            const { state } = run(open, {
+                type: Events.CATALOG_LOADED,
+                catalog: { studio: [] }
+            });
+            expect(state.catalogStatus.studio).toBe(PoolStatus.READY);
+        });
+
+        it('falls back to the browsed source when a failure omits one', () => {
+            const { state } = run(managerState(), { type: Events.CATALOG_FAILED, message: 'offline' });
+            expect(state.catalogError.studio).toBe('offline');
         });
 
         it('records a catalogue failure', () => {
-            const { state } = run(managerState(), { type: Events.CATALOG_FAILED, message: 'offline' });
-            expect(state.catalogStatus).toBe(PoolStatus.ERROR);
-            expect(state.catalogError).toBe('offline');
+            const { state } = run(managerState(), {
+                type: Events.CATALOG_FAILED,
+                source: 'studio',
+                message: 'offline'
+            });
+            expect(state.catalogStatus.studio).toBe(PoolStatus.ERROR);
+            expect(state.catalogError.studio).toBe('offline');
         });
     });
 
@@ -783,5 +856,358 @@ describe('channel manager', () => {
 
             expect(state.focus.channelId).toBe('studio:1');
         });
+    });
+});
+
+describe('grouping', () => {
+    const mixed = () =>
+        reduce(readyState(), {
+            type: Events.CHANNELS_LOADED,
+            channels: [
+                channel('studio:1', 'Alpha'),
+                channel('studio:2', 'Bravo'),
+                { ...channel('tag:1', 'Beach'), source: 'tag' },
+                { ...channel('performer:1', 'Riley'), source: 'performer' }
+            ],
+            errors: []
+        }).state;
+
+    it('emits a group per source in the declared order', () => {
+        expect(mixed().channelGroups.map((g) => g.key)).toEqual(['studio', 'performer', 'tag']);
+    });
+
+    it('flattens groups into the visible order', () => {
+        expect(mixed().channels.map((c) => c.id)).toEqual([
+            'studio:1',
+            'studio:2',
+            'performer:1',
+            'tag:1'
+        ]);
+    });
+
+    it('collapsing a group removes its rows from the visible list', () => {
+        const { state } = run(mixed(), { type: Events.TOGGLE_GROUP, key: 'studio' });
+        expect(state.channels.map((c) => c.id)).toEqual(['performer:1', 'tag:1']);
+        expect(state.channelGroups.find((g) => g.key === 'studio').collapsed).toBe(true);
+    });
+
+    it('keeps the collapsed group listed, with an honest count', () => {
+        const { state } = run(mixed(), { type: Events.TOGGLE_GROUP, key: 'studio' });
+        expect(state.channelGroups.find((g) => g.key === 'studio').count).toBe(2);
+    });
+
+    it('expands again', () => {
+        const collapsed = run(mixed(), { type: Events.TOGGLE_GROUP, key: 'studio' }).state;
+        const { state } = run(collapsed, { type: Events.TOGGLE_GROUP, key: 'studio' });
+        expect(state.channels).toHaveLength(4);
+    });
+
+    it('persists collapsed groups', () => {
+        const { effects } = run(mixed(), { type: Events.TOGGLE_GROUP, key: 'studio' });
+        expect(effects[0].key).toBe(STORAGE_KEYS.collapsed);
+    });
+
+    it('never lets keyboard focus enter a collapsed group', () => {
+        // Arrow-down from the last visible studio must skip into the next
+        // group, not into a hidden row -- the Phase 2 invariant, under grouping.
+        const collapsed = run(mixed(), { type: Events.TOGGLE_GROUP, key: 'performer' }).state;
+        const focused = {
+            ...collapsed,
+            focus: { channelId: 'studio:2', timeMs: NOON, source: 'keyboard' }
+        };
+
+        const { state } = run(focused, { type: Events.MOVE_FOCUS, axis: 'channel', delta: 1 });
+
+        expect(state.focus.channelId).toBe('tag:1');
+    });
+
+    it('moves focus off a channel whose group was just collapsed', () => {
+        const focused = { ...mixed(), focus: { channelId: 'tag:1', timeMs: NOON, source: 'keyboard' } };
+        const { state } = run(focused, { type: Events.TOGGLE_GROUP, key: 'tag' });
+        expect(state.channels.map((c) => c.id)).not.toContain('tag:1');
+        expect(state.focus.channelId).toBe('studio:1');
+    });
+});
+
+describe('guide search and type filter', () => {
+    const mixed = () =>
+        reduce(readyState(), {
+            type: Events.CHANNELS_LOADED,
+            channels: [
+                channel('studio:1', 'Alpha'),
+                { ...channel('tag:1', 'Alphabet'), source: 'tag' },
+                { ...channel('tag:2', 'Beach'), source: 'tag' }
+            ],
+            errors: []
+        }).state;
+
+    it('narrows rows by name, case-insensitively', () => {
+        const { state } = run(mixed(), { type: Events.GUIDE_SEARCH, query: 'ALPHA' });
+        expect(state.channels.map((c) => c.id)).toEqual(['studio:1', 'tag:1']);
+    });
+
+    it('narrows rows to one source type', () => {
+        const { state } = run(mixed(), { type: Events.SET_TYPE_FILTER, typeFilter: 'tag' });
+        expect(state.channels.map((c) => c.id)).toEqual(['tag:1', 'tag:2']);
+        expect(state.channelGroups.map((g) => g.key)).toEqual(['tag']);
+    });
+
+    it('combines search with the type filter', () => {
+        const filtered = run(mixed(), { type: Events.SET_TYPE_FILTER, typeFilter: 'tag' }).state;
+        const { state } = run(filtered, { type: Events.GUIDE_SEARCH, query: 'beach' });
+        expect(state.channels.map((c) => c.id)).toEqual(['tag:2']);
+    });
+
+    it('never touches the lineup', () => {
+        const { state, effects } = run(mixed(), { type: Events.SET_TYPE_FILTER, typeFilter: 'tag' });
+        expect(state.lineup).toEqual(mixed().lineup);
+        expect(effects).toEqual([]);
+    });
+
+    it('ignores a no-op change', () => {
+        const state = mixed();
+        expect(run(state, { type: Events.GUIDE_SEARCH, query: '' }).state).toBe(state);
+        expect(run(state, { type: Events.SET_TYPE_FILTER, typeFilter: 'all' }).state).toBe(state);
+    });
+});
+
+describe('the player', () => {
+    it('changes mode and remembers it', () => {
+        const { state, effects } = run(readyState(), {
+            type: Events.SET_PLAYER_MODE,
+            mode: 'theater'
+        });
+        expect(state.playerMode).toBe('theater');
+        expect(effectTypes(effects)).toEqual(['setPlayerMode', 'persist']);
+    });
+
+    it('ignores a mode it is already in', () => {
+        const state = readyState();
+        expect(run(state, { type: Events.SET_PLAYER_MODE, mode: 'corner' }).state).toBe(state);
+    });
+
+    it('ignores a pause it is already in', () => {
+        const state = readyState();
+        expect(run(state, { type: Events.SET_VIEWER_PAUSED, paused: false }).state).toBe(state);
+    });
+
+    it('pauses', () => {
+        const { state, effects } = run(readyState(), { type: Events.SET_VIEWER_PAUSED, paused: true });
+        expect(state.viewerPaused).toBe(true);
+        expect(effects).toEqual([{ type: 'setPaused', paused: true }]);
+    });
+
+    it('does not retune a paused viewer when the programme changes', () => {
+        // Otherwise the boundary watcher restarts playback under the user.
+        const paused = run(readyState(), { type: Events.SET_VIEWER_PAUSED, paused: true }).state;
+        const { effects } = run(paused, { type: Events.TICK, nowMs: NOON + HOUR });
+        expect(effectTypes(effects)).not.toContain('tuneViewer');
+    });
+
+    it('re-syncs to live when unpaused, rather than resuming behind', () => {
+        const paused = run(readyState(), { type: Events.SET_VIEWER_PAUSED, paused: true }).state;
+        const { state, effects } = run(paused, { type: Events.SET_VIEWER_PAUSED, paused: false });
+        expect(state.viewerPaused).toBe(false);
+        expect(effectTypes(effects)).toContain('tuneViewer');
+    });
+});
+
+describe('preview', () => {
+    /** A time inside a programme that is definitely not live. */
+    const futureStart = (state) => {
+        const entries = state.schedules['studio:1'].entries;
+        return DAY_START + entries[1].offsetMs + 1000;
+    };
+
+    it('pauses live and shows the poster for a scene that is not on', () => {
+        const state = readyState();
+        const { state: next, effects } = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: futureStart(state)
+        });
+
+        expect(next.preview).not.toBeNull();
+        expect(next.preview.channelId).toBe('studio:1');
+        expect(effectTypes(effects)).toEqual(['setPaused', 'showPoster']);
+    });
+
+    it('makes the preview sticky, so a mouse leave cannot clear it', () => {
+        const state = readyState();
+        const { state: next } = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: futureStart(state)
+        });
+        expect(next.focus.source).toBe('sticky');
+    });
+
+    it('tunes instead of previewing when the block is already live', () => {
+        const { state, effects } = run(readyState(), {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: NOON
+        });
+        expect(state.preview).toBeNull();
+        expect(effectTypes(effects)).toContain('tuneViewer');
+    });
+
+    it('does not retune while previewing', () => {
+        const state = readyState();
+        const previewing = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: futureStart(state)
+        }).state;
+
+        const { effects } = run(previewing, { type: Events.TICK, nowMs: NOON + HOUR });
+        expect(effectTypes(effects)).not.toContain('tuneViewer');
+    });
+
+    it('returns to live', () => {
+        const state = readyState();
+        const previewing = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: futureStart(state)
+        }).state;
+
+        const { state: next, effects } = run(previewing, { type: Events.BACK_TO_LIVE });
+
+        expect(next.preview).toBeNull();
+        expect(next.viewerPaused).toBe(false);
+        expect(effectTypes(effects)).toContain('tuneViewer');
+    });
+
+    it('returns to live even on a channel with nothing scheduled', () => {
+        const state = readyState();
+        const entries = state.schedules['studio:1'].entries;
+        const previewing = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: DAY_START + entries[1].offsetMs + 1000
+        }).state;
+
+        const { state: next } = run(
+            { ...previewing, tunedChannelId: 'studio:2' },
+            { type: Events.BACK_TO_LIVE }
+        );
+
+        expect(next.preview).toBeNull();
+        expect(next.viewerPaused).toBe(false);
+    });
+
+    it('ignores Back to live when nothing is being previewed', () => {
+        const state = readyState();
+        expect(run(state, { type: Events.BACK_TO_LIVE }).state).toBe(state);
+    });
+
+    it('ignores a preview on a channel with no schedule', () => {
+        const state = readyState();
+        expect(run(state, { type: Events.PREVIEW, channelId: 'studio:2', timeMs: NOON }).state).toBe(state);
+    });
+
+    it('ignores a preview on an empty schedule', () => {
+        const state = readyState();
+        state.schedules['studio:1'] = { entries: [], totalMs: 0 };
+        expect(run(state, { type: Events.PREVIEW, channelId: 'studio:1', timeMs: NOON }).state).toBe(state);
+    });
+});
+
+describe('returning from another app', () => {
+    it('re-establishes playback, which drift correction cannot do alone', () => {
+        // iOS pauses the element on backgrounding and fires nothing useful.
+        const { effects } = run(readyState(), { type: Events.RESUME_AFTER_HIDDEN });
+        expect(effectTypes(effects)).toContain('tuneViewer');
+    });
+
+    it('leaves a deliberately paused viewer paused', () => {
+        const paused = run(readyState(), { type: Events.SET_VIEWER_PAUSED, paused: true }).state;
+        expect(run(paused, { type: Events.RESUME_AFTER_HIDDEN }).effects).toEqual([]);
+    });
+
+    it('does nothing when the guide is closed', () => {
+        const closed = readyState({ open: false });
+        expect(run(closed, { type: Events.RESUME_AFTER_HIDDEN }).effects).toEqual([]);
+    });
+});
+
+describe('channel column width', () => {
+    it('resizes and persists', () => {
+        const { state, effects } = run(readyState(), { type: Events.SET_HEAD_WIDTH, px: 260 });
+        expect(state.headWidthPx).toBe(260);
+        expect(effects).toEqual([{ type: 'persist', key: STORAGE_KEYS.headWidth, value: '260' }]);
+    });
+
+    it('clamps to a usable range', () => {
+        expect(run(readyState(), { type: Events.SET_HEAD_WIDTH, px: 20 }).state.headWidthPx).toBe(120);
+        expect(run(readyState(), { type: Events.SET_HEAD_WIDTH, px: 9999 }).state.headWidthPx).toBe(480);
+    });
+
+    it('ignores a no-op resize', () => {
+        const state = readyState();
+        expect(run(state, { type: Events.SET_HEAD_WIDTH, px: 200 }).state).toBe(state);
+    });
+});
+
+describe('focus source', () => {
+    it('records where the focus came from', () => {
+        const hovered = run(readyState(), {
+            type: Events.FOCUS_CELL,
+            channelId: 'studio:1',
+            timeMs: NOON,
+            source: 'hover'
+        }).state;
+        expect(hovered.focus.source).toBe('hover');
+    });
+
+    it('treats an unsourced focus as sticky', () => {
+        const { state } = run(readyState(), {
+            type: Events.FOCUS_CELL,
+            channelId: 'studio:1',
+            timeMs: NOON
+        });
+        expect(state.focus.source).toBe('sticky');
+    });
+
+    it('marks keyboard movement as keyboard focus', () => {
+        const { state } = run(readyState(), { type: Events.MOVE_FOCUS, axis: 'time', delta: 1 });
+        expect(state.focus.source).toBe('keyboard');
+
+        const across = run(readyState(), { type: Events.MOVE_FOCUS, axis: 'channel', delta: 1 });
+        expect(across.state.focus.source).toBe('keyboard');
+    });
+
+    it('returns focus to the live programme when the mouse leaves', () => {
+        const hovered = run(readyState(), {
+            type: Events.FOCUS_CELL,
+            channelId: 'studio:1',
+            timeMs: NOON + 90 * MIN,
+            source: 'hover'
+        }).state;
+
+        const { state } = run(hovered, { type: Events.FOCUS_LIVE });
+
+        const live = state.schedules['studio:1'];
+        expect(state.focus.channelId).toBe('studio:1');
+        expect(state.focus.timeMs).toBeLessThanOrEqual(NOON);
+        expect(live).toBeDefined();
+    });
+
+    it('does not disturb a preview when the mouse leaves', () => {
+        const state = readyState();
+        const entries = state.schedules['studio:1'].entries;
+        const previewing = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: DAY_START + entries[1].offsetMs + 1000
+        }).state;
+
+        expect(run(previewing, { type: Events.FOCUS_LIVE }).state).toBe(previewing);
+    });
+
+    it('does nothing when the tuned channel has no programming', () => {
+        const state = readyState({ tunedChannelId: 'studio:2' });
+        expect(run(state, { type: Events.FOCUS_LIVE }).state).toBe(state);
     });
 });

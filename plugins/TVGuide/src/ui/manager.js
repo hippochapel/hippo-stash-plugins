@@ -17,22 +17,20 @@ import { el, replaceChildren } from './dom.js';
 import { Events } from '../state/actions.js';
 import { PoolStatus } from '../state/initialState.js';
 import { SORT_MODES } from '../domain/channelPrefs.js';
-import { KNOWN_SOURCES } from '../domain/lineup.js';
+import { KNOWN_SOURCES, SOURCE_LABELS } from '../domain/lineup.js';
 import * as sel from '../state/selectors.js';
 import { logoBadge } from './logoBadge.js';
 
-const SOURCE_LABELS = {
-    studio: 'Studios',
-    tag: 'Tags',
-    group: 'Groups',
-    savedFilter: 'Saved filters'
-};
-
 const SORT_LABELS = {
     name: 'Name',
-    sceneCount: 'Scene count',
-    source: 'Source'
+    sceneCount: 'Scene count'
 };
+
+/**
+ * Adding hundreds of channels at once is easy to do by accident and tedious to
+ * undo -- Tags alone can be well over a thousand.
+ */
+const BULK_CONFIRM_THRESHOLD = 200;
 
 export function createManager({ store }) {
     const search = el('input', {
@@ -53,6 +51,16 @@ export function createManager({ store }) {
         SORT_MODES.map((mode) => el('option', { value: mode }, SORT_LABELS[mode]))
     );
 
+    const sourceSelect = el(
+        'select',
+        {
+            id: 'tvguide-manager-source',
+            class: 'tvguide-manager-source',
+            onchange: (e) => store.dispatch({ type: Events.SET_MANAGER_SOURCE, source: e.target.value })
+        },
+        KNOWN_SOURCES.map((source) => el('option', { value: source }, SOURCE_LABELS[source]))
+    );
+
     const sections = el('div', { class: 'tvguide-manager-sections' });
     const status = el('p', { class: 'tvguide-manager-status' });
 
@@ -71,6 +79,8 @@ export function createManager({ store }) {
             el(
                 'div',
                 { class: 'tvguide-manager-tools' },
+                el('label', { for: 'tvguide-manager-source', class: 'tvguide-sr-only' }, 'Channel type'),
+                sourceSelect,
                 el('label', { for: 'tvguide-manager-search', class: 'tvguide-sr-only' }, 'Filter channels'),
                 search,
                 el('label', { for: 'tvguide-manager-sort' }, 'Sort'),
@@ -105,18 +115,27 @@ export function createManager({ store }) {
         // Rebuild only when something the list depends on actually moved --
         // otherwise typing in an editor field would destroy the field.
         const signature = [
-            state.catalogStatus,
+            state.managerSource,
+            // Per-source now, so read it through the selector -- the raw value
+            // is an object and would stringify identically every time.
+            sel.catalogStatus(state),
+            (state.catalog[state.managerSource] || []).length,
             state.managerSearch,
             state.sort,
             JSON.stringify(state.lineup),
             JSON.stringify(state.prefs),
+            // Pins live outside prefs now; without this, pinning changes the
+            // store but not the panel.
+            JSON.stringify(state.pinOrder),
             state.allChannels.length,
             [...editing].join(',')
         ].join('|');
         if (signature === renderedSignature) return;
         renderedSignature = signature;
 
-        replaceChildren(sections, KNOWN_SOURCES.map((source) => renderSection(state, source)));
+        // One type at a time: 119 channels across five types is not a list
+        // anyone scrolls through, and the catalogue is fetched per source.
+        replaceChildren(sections, renderSection(state, state.managerSource));
     }
 
     /** Expanding an editor is local state, so it has to force the rebuild. */
@@ -154,11 +173,12 @@ export function createManager({ store }) {
                 'header',
                 { class: 'tvguide-manager-section-head' },
                 el('h3', {}, SOURCE_LABELS[source]),
-                ruleControl(state, source, rule)
+                ruleControl(state, source, rule),
+                bulkControls(state, source, rows)
             ),
             rows.length === 0
                 ? el('p', { class: 'tvguide-manager-empty' },
-                      state.catalogStatus === PoolStatus.READY ? 'Nothing matches.' : '…')
+                      sel.catalogStatus(state) === PoolStatus.READY ? 'Nothing matches.' : '…')
                 : el('ul', { class: 'tvguide-manager-list' }, rows.map((row) => renderRow(state, source, row)))
         );
     }
@@ -198,6 +218,83 @@ export function createManager({ store }) {
             }),
             el('span', {}, 'scenes')
         );
+    }
+
+    /**
+     * Add all / remove all, scoped to what is currently listed.
+     *
+     * Deliberately not "every channel of this type": the dropdown and the search
+     * box are how you narrow the target, and an unscoped add on Tags would be
+     * over a thousand channels.
+     */
+    function bulkControls(state, source, rows) {
+        const missing = rows.filter((row) => !row.included);
+        const present = rows.filter((row) => row.included);
+
+        return el(
+            'div',
+            { class: 'tvguide-manager-bulk' },
+            el(
+                'button',
+                {
+                    class: 'tvguide-manager-bulkbutton',
+                    type: 'button',
+                    disabled: missing.length === 0,
+                    onclick: () => bulkSet(state, source, rows, true)
+                },
+                `Add all (${missing.length})`
+            ),
+            el(
+                'button',
+                {
+                    class: 'tvguide-manager-bulkbutton',
+                    type: 'button',
+                    disabled: present.length === 0,
+                    onclick: () => bulkSet(state, source, rows, false)
+                },
+                `Remove all (${present.length})`
+            )
+        );
+    }
+
+    function bulkSet(state, source, rows, include) {
+        const affected = rows.filter((row) => row.included !== include);
+        if (affected.length === 0) return;
+
+        if (affected.length > BULK_CONFIRM_THRESHOLD && typeof confirm === 'function') {
+            const verb = include ? 'Add' : 'Remove';
+            if (!confirm(`${verb} ${affected.length} channels?`)) return;
+        }
+
+        const localId = (channelId) => channelId.slice(source.length + 1);
+        const picks = new Set(sel.explicitIds(state, source));
+        const listed = new Set(rows.map((row) => row.channel.id));
+
+        if (include) {
+            // Anything already in the guide via the rule has to become an
+            // explicit pick too, or turning the rule off later would drop it.
+            for (const row of rows) picks.add(localId(row.channel.id));
+        } else {
+            for (const row of rows) picks.delete(localId(row.channel.id));
+        }
+
+        let lineup = state.lineup.filter(
+            (entry) => !(entry.source === source && Array.isArray(entry.ids))
+        );
+
+        // A rule would immediately undo a removal, and makes an add redundant.
+        lineup = lineup.filter((entry) => !(entry.source === source && !entry.ids && !entry.names));
+
+        if (!include) {
+            // Keep rule-swept channels that were not in the filtered view.
+            for (const channel of state.allChannels) {
+                if (channel.source !== source || listed.has(channel.id)) continue;
+                picks.add(localId(channel.id));
+            }
+        }
+
+        if (picks.size > 0) lineup = [...lineup, { source, ids: [...picks] }];
+        store.dispatch({ type: Events.SET_LINEUP, lineup });
     }
 
     function setRule(state, source, enabled, minScenes) {

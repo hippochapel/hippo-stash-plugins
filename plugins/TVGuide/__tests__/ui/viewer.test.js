@@ -278,6 +278,143 @@ describe('createViewer', () => {
         });
     });
 
+    describe('pause', () => {
+        it('pauses and resumes on request', () => {
+            const { viewer } = build();
+            viewer.tune(scene(), 0, true);
+
+            viewer.setPaused(true);
+            expect(viewer.element.pause).toHaveBeenCalled();
+            expect(viewer.isPaused()).toBe(true);
+
+            viewer.element.play.mockClear();
+            viewer.setPaused(false);
+            expect(viewer.element.play).toHaveBeenCalled();
+        });
+
+        it('leaves a deliberately paused element alone when drift is checked', () => {
+            // Otherwise the drift timer would drag playback forward under a
+            // user who chose to pause.
+            const { viewer, control } = build();
+            viewer.tune(scene(), 0, true);
+            viewer.element.dispatchEvent(new Event('loadedmetadata'));
+
+            viewer.setPaused(true);
+            clock += 60000;
+            control.setTime(0);
+            viewer._checkDrift();
+
+            expect(control.getTime()).toBe(0);
+        });
+
+        it('clears the pause when retuned', () => {
+            const { viewer } = build();
+            viewer.setPaused(true);
+            viewer.tune(scene(), 0, true);
+            expect(viewer.isPaused()).toBe(false);
+        });
+    });
+
+    describe('poster-only preview', () => {
+        it('stops the stream and shows the scene still', () => {
+            const { viewer } = build();
+            viewer.tune(scene(), 0, true);
+
+            viewer.showPoster({ id: 's9', paths: { screenshot: '/shot-9' } });
+
+            expect(viewer.element.pause).toHaveBeenCalled();
+            expect(viewer.element.hasAttribute('src')).toBe(false);
+            expect(viewer.element.poster).toContain('/shot-9');
+        });
+
+        it('is not dragged back by drift correction', () => {
+            const { viewer, control } = build();
+            viewer.tune(scene(), 0, true);
+            viewer.showPoster({ id: 's9', paths: { screenshot: '/shot-9' } });
+
+            clock += 60000;
+            viewer._checkDrift();
+
+            expect(control.getTime()).toBe(0);
+        });
+
+        it('copes with a scene that has no screenshot', () => {
+            const { viewer } = build();
+            expect(() => viewer.showPoster({ id: 's9', paths: {} })).not.toThrow();
+        });
+    });
+
+    describe('resume after the tab was hidden', () => {
+        it('re-seeks and plays', () => {
+            // iOS pauses the element on app switch and fires nothing that drift
+            // correction can act on.
+            const { viewer, control } = build();
+            viewer.tune(scene(), 0, true);
+            viewer.element.dispatchEvent(new Event('loadedmetadata'));
+            viewer.element.play.mockClear();
+
+            expect(viewer.resume(300000)).toBe(true);
+
+            expect(control.getTime()).toBe(300);
+            expect(viewer.element.play).toHaveBeenCalled();
+        });
+
+        it('refuses when the user chose to pause', () => {
+            const { viewer } = build();
+            viewer.tune(scene(), 0, true);
+            viewer.setPaused(true);
+            expect(viewer.resume(1000)).toBe(false);
+        });
+
+        it('refuses while showing a still', () => {
+            const { viewer } = build();
+            viewer.tune(scene(), 0, true);
+            viewer.showPoster({ id: 's9', paths: {} });
+            expect(viewer.resume(1000)).toBe(false);
+        });
+
+        it('refuses with nothing tuned', () => {
+            const { viewer } = build();
+            expect(viewer.resume(1000)).toBe(false);
+        });
+    });
+
+    describe('events', () => {
+        it('reports loading and playing to subscribers', () => {
+            const { viewer } = build();
+            const seen = [];
+            viewer.subscribe((e) => seen.push(e.type));
+
+            viewer.element.dispatchEvent(new Event('loadstart'));
+            viewer.element.dispatchEvent(new Event('waiting'));
+            viewer.element.dispatchEvent(new Event('playing'));
+            viewer.element.dispatchEvent(new Event('pause'));
+
+            expect(seen).toEqual(['loading', 'loading', 'playing', 'paused']);
+        });
+
+        it('unsubscribes', () => {
+            const { viewer } = build();
+            const listener = jest.fn();
+            const off = viewer.subscribe(listener);
+            off();
+            viewer.element.dispatchEvent(new Event('playing'));
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it('keeps notifying when one subscriber throws', () => {
+            const { viewer } = build();
+            const healthy = jest.fn();
+            viewer.subscribe(() => {
+                throw new Error('broken');
+            });
+            viewer.subscribe(healthy);
+
+            expect(() => viewer.element.dispatchEvent(new Event('playing'))).not.toThrow();
+            expect(healthy).toHaveBeenCalled();
+        });
+    });
+
     it('tears down cleanly', () => {
         const { viewer } = build();
         viewer.tune(scene(), 0, true);

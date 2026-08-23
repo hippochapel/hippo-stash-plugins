@@ -1,4 +1,10 @@
-import { mapKey, Intents, isTextEntry, createKeyboardHandler } from '../../src/ui/keyboard.js';
+import {
+    mapKey,
+    Intents,
+    isTextEntry,
+    handlesOwnKeys,
+    createKeyboardHandler
+} from '../../src/ui/keyboard.js';
 import { Events } from '../../src/state/actions.js';
 import { createInitialState } from '../../src/state/initialState.js';
 
@@ -59,6 +65,27 @@ describe('isTextEntry', () => {
     });
 });
 
+describe('handlesOwnKeys', () => {
+    const withRole = (role) => ({ tagName: 'DIV', getAttribute: () => role });
+
+    it('defers to text entry', () => {
+        expect(handlesOwnKeys({ tagName: 'INPUT' })).toBe(true);
+    });
+
+    it.each(['separator', 'slider', 'spinbutton', 'textbox'])(
+        'defers to a %s, which interprets arrows itself',
+        (role) => {
+            expect(handlesOwnKeys(withRole(role))).toBe(true);
+        }
+    );
+
+    it('does not defer to an ordinary element', () => {
+        expect(handlesOwnKeys(withRole('gridcell'))).toBe(false);
+        expect(handlesOwnKeys({ tagName: 'DIV' })).toBe(false);
+        expect(handlesOwnKeys(null)).toBe(false);
+    });
+});
+
 describe('createKeyboardHandler', () => {
     function harness(stateOverrides = {}) {
         const state = {
@@ -102,6 +129,20 @@ describe('createKeyboardHandler', () => {
         handle(e);
         expect(dispatch).not.toHaveBeenCalled();
         expect(e.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('lets a focused resizer keep its arrow keys', () => {
+        // The handler captures and stops propagation, so without this the
+        // separator could never receive an arrow key at all.
+        const { handle, dispatch } = harness();
+        const e = event('ArrowRight', {
+            target: { tagName: 'DIV', getAttribute: () => 'separator' }
+        });
+
+        handle(e);
+
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(e.stopPropagation).not.toHaveBeenCalled();
     });
 
     it('leaves keys it does not own to the browser', () => {

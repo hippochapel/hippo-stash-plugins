@@ -10,7 +10,16 @@
  * to break the guide.
  */
 
-export const KNOWN_SOURCES = ['studio', 'tag', 'group', 'savedFilter'];
+export const KNOWN_SOURCES = ['studio', 'performer', 'tag', 'group', 'savedFilter'];
+
+/** What each source is called in the UI. Performers are shown as "Models". */
+export const SOURCE_LABELS = {
+    studio: 'Studios',
+    performer: 'Models',
+    tag: 'Tags',
+    group: 'Groups',
+    savedFilter: 'Filters'
+};
 
 /** Every Stash library has studios, so this produces a usable guide unconfigured. */
 export const DEFAULT_LINEUP = [{ source: 'studio', minScenes: 5 }];

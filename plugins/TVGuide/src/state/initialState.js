@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS } from '../api/settings.js';
 import { DEFAULT_SORT } from '../domain/channelPrefs.js';
-import { DEFAULT_LINEUP } from '../domain/lineup.js';
+import { KNOWN_SOURCES, DEFAULT_LINEUP } from '../domain/lineup.js';
+
 
 export const PoolStatus = {
     IDLE: 'idle',
@@ -28,7 +29,11 @@ export function createInitialState() {
         // prefs-applied and sorted list -- and it has to be real state rather
         // than a selector, because MOVE_FOCUS walks it in the reducer.
         allChannels: [],
+        // Flattened, collapse-aware visible order. MOVE_FOCUS walks this, so it
+        // must match what is on screen exactly.
         channels: [],
+        // The same channels as grouped rows, for rendering.
+        channelGroups: [],
         channelsStatus: PoolStatus.IDLE,
         channelsError: null,
         sourceErrors: [],
@@ -42,15 +47,31 @@ export function createInitialState() {
         focus: null,
         muted: true,
 
+        // Player
+        playerMode: 'corner',
+        viewerPaused: false,
+        // A scene being previewed instead of the live stream, or null.
+        preview: null,
+
+        // Guide navigation
+        guideSearch: '',
+        typeFilter: 'all',
+        collapsedGroups: [],
+        headWidthPx: 200,
+        sourceOrder: KNOWN_SOURCES,
+
         // Channel manager
         lineup: DEFAULT_LINEUP,
+        pinOrder: [],
         prefs: {},
         sort: DEFAULT_SORT,
         managerOpen: false,
         managerSearch: '',
-        catalog: null,
-        catalogStatus: PoolStatus.IDLE,
-        catalogError: null,
+        // Keyed by source: the catalogue is fetched one type at a time.
+        managerSource: 'studio',
+        catalog: {},
+        catalogStatus: {},
+        catalogError: {},
 
         announcement: ''
     };

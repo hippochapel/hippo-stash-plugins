@@ -83,11 +83,28 @@ export function isTextEntry(target) {
     return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
+/**
+ * Controls that interpret arrow keys themselves.
+ *
+ * This handler runs in the capture phase and stops propagation on the keys it
+ * owns, so without this check it swallows arrows before a focused separator or
+ * slider can act on them -- which is exactly what stopped the channel-column
+ * resizer from working.
+ */
+const SELF_MANAGED_ROLES = ['separator', 'slider', 'spinbutton', 'textbox'];
+
+export function handlesOwnKeys(target) {
+    if (!target) return false;
+    if (isTextEntry(target)) return true;
+    const role = typeof target.getAttribute === 'function' ? target.getAttribute('role') : null;
+    return SELF_MANAGED_ROLES.includes(role);
+}
+
 export function createKeyboardHandler({ store, onClose, onHelp }) {
     return function handleKeydown(event) {
         const state = store.getState();
         if (!state.open) return;
-        if (isTextEntry(event.target)) return;
+        if (handlesOwnKeys(event.target)) return;
 
         const intent = mapKey(event);
         if (!intent) return;
