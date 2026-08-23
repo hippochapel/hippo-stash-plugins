@@ -74,9 +74,12 @@ body.stash-tvguide-active {
     padding: 12px 16px;
     background: var(--tvguide-surface);
     border-bottom: 1px solid var(--tvguide-border);
-    /* Fixed height: without it, hovering scenes with different poster sizes and
-       description lengths reflowed the whole page under the cursor. */
-    height: 200px;
+    /* `flex: 0 0` matters as much as the height: with the default shrink factor
+       the stage below squashed this to almost nothing, taking the player with
+       it. The fixed height is what stops hovering scenes with different posters
+       and description lengths from reflowing the page. */
+    flex: 0 0 236px;
+    height: 236px;
     box-sizing: border-box;
     overflow: hidden;
 }
@@ -810,28 +813,35 @@ body.stash-tvguide-active {
 .tvguide-grid-main .tvguide-grid-scroll { flex: 1 1 auto; }
 
 .tvguide-rail {
-    flex: 0 0 20px;
+    flex: 0 0 22px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 2px 0;
+    align-items: stretch;
+    /* Spread down the full height rather than bunching at the top. */
+    justify-content: space-evenly;
+    padding: 4px 0;
     border-right: 1px solid var(--tvguide-border);
     background: var(--tvguide-surface);
     overflow: hidden;
 }
 
 .tvguide-rail-letter {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-height: 0 !important;
     padding: 0 !important;
     border: none !important;
+    border-radius: 0 !important;
     background: none !important;
     color: var(--tvguide-text-dim);
-    font-size: 9px;
-    line-height: 1.15;
+    font-size: 10px;
+    line-height: 1;
     cursor: pointer;
 }
+
+.tvguide-rail-letter:hover { color: var(--tvguide-accent); }
 
 .tvguide-resizer {
     flex: 0 0 5px;
@@ -914,7 +924,7 @@ body.stash-tvguide-active {
 /* ---------- player ---------- */
 
 .tvguide-player {
-    flex: 0 0 300px;
+    flex: 0 0 268px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -955,20 +965,17 @@ body.stash-tvguide-active {
     transition: opacity 0.15s ease;
 }
 
-/* Reveal on hover only where there is a pointer; on touch there is no hover to
-   reveal them with, so they stay visible. */
-@media (hover: hover) {
-    .tvguide-player-controls {
-        opacity: 0;
-        pointer-events: none;
-    }
+/* Hidden by default and revealed by `is-showing-controls`, which the player
+   toggles from real pointer/focus events. A `@media (hover: hover)` rule was
+   reporting the wrong thing on a real machine and left these permanently on. */
+.tvguide-player-controls {
+    opacity: 0;
+    pointer-events: none;
+}
 
-    .tvguide-player-stage:hover .tvguide-player-controls,
-    /* Keyboard focus only -- :focus-within would keep them open after a click. */
-    .tvguide-player-stage:has(:focus-visible) .tvguide-player-controls {
-        opacity: 1;
-        pointer-events: auto;
-    }
+.tvguide-player.is-showing-controls .tvguide-player-controls {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .tvguide-player-spacer { flex: 1 1 auto; }
@@ -988,6 +995,25 @@ body.stash-tvguide-active {
 .tvguide-player-controls { gap: 4px; padding: 6px; }
 
 .tvguide-back-to-live[hidden] { display: none; }
+
+/* Previewing something that is not on: hide the video entirely so it is
+   obvious nothing is playing, leaving only the way back. */
+.tvguide-player.is-previewing .tvguide-player-stage,
+.tvguide-player.is-previewing .tvguide-player-progress {
+    display: none;
+}
+
+.tvguide-player.is-previewing {
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
+.tvguide-player.is-previewing .tvguide-back-to-live {
+    position: static;
+    background: var(--tvguide-surface-2) !important;
+    border-color: var(--tvguide-border) !important;
+    color: var(--tvguide-text) !important;
+}
 
 .tvguide-spinner {
     position: absolute;
@@ -1029,23 +1055,39 @@ body.stash-tvguide-active {
     background: var(--tvguide-surface-2);
 }
 
-/* Theater: the player takes the full width and the guide scrolls beneath it. */
-.tvguide-overlay:has(.tvguide-player[data-mode='theater']) {
+/* Theater: the player takes the full width and the guide scrolls beneath it.
+   Both halves matter -- widening the player without giving it height just got
+   it clipped by the guide. */
+.tvguide-overlay.is-theater {
     overflow-y: auto;
 }
 
-.tvguide-overlay:has(.tvguide-player[data-mode='theater']) .tvguide-header {
+.tvguide-overlay.is-theater .tvguide-header {
+    flex: 0 0 auto;
+    height: auto;
     flex-direction: column;
+    align-items: stretch;
 }
 
-.tvguide-player[data-mode='theater'] {
-    flex: 1 1 100%;
+.tvguide-overlay.is-theater .tvguide-player {
+    flex: 0 0 auto;
     width: 100%;
+    height: auto;
     order: -1;
 }
 
-.tvguide-player[data-mode='fullscreen'] .tvguide-player-stage {
-    border-radius: 0;
+.tvguide-overlay.is-theater .tvguide-player-stage {
+    max-height: 62vh;
+}
+
+.tvguide-overlay.is-theater .tvguide-viewer-video {
+    max-height: 62vh;
+    object-fit: contain;
+}
+
+.tvguide-overlay.is-theater .tvguide-stage {
+    flex: 0 0 auto;
+    min-height: 70vh;
 }
 
 .tvguide-manager-bulk { display: flex; gap: 6px; }

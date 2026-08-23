@@ -16,6 +16,7 @@ import { Events } from '../state/actions.js';
 import { formatClock, formatDuration, formatRemaining } from '../domain/format.js';
 import { sceneTitle } from '../api/scenes.js';
 import * as sel from '../state/selectors.js';
+import { setIcon } from './icons.js';
 
 export function createPlayer({ store, viewer }) {
     const spinner = el('div', { class: 'tvguide-spinner', 'aria-hidden': 'true' });
@@ -92,9 +93,21 @@ export function createPlayer({ store, viewer }) {
         store.dispatch({ type: Events.SET_PLAYER_MODE, mode: current === mode ? 'corner' : mode });
     }
 
+    /**
+     * Fullscreen targets the *stage*, not the whole panel.
+     *
+     * The panel's progress readout is rewritten every second; keeping the
+     * fullscreen element off that churning subtree is what stops fullscreen
+     * dropping out again a tick after it opens.
+     */
+    function isFullscreen() {
+        return document.fullscreenElement === stage;
+    }
+
     function applyFullscreen(on) {
         if (on) {
-            if (root.requestFullscreen) root.requestFullscreen().catch(() => {});
+            if (isFullscreen()) return;
+            if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {});
             else if (viewer.element.webkitEnterFullscreen) {
                 // iOS: only a video element can go fullscreen, so the guide is
                 // not visible in this mode on iPad.
@@ -102,10 +115,43 @@ export function createPlayer({ store, viewer }) {
             }
             return;
         }
-        if (document.fullscreenElement && document.exitFullscreen) {
+        // Only exit what we opened -- exiting unconditionally would fight
+        // anything else on the page that is fullscreen.
+        if (isFullscreen() && document.exitFullscreen) {
             document.exitFullscreen().catch(() => {});
         }
     }
+
+    // Let state follow the browser: pressing Esc, or the OS dropping out of
+    // fullscreen, must not leave the button claiming we are still in it.
+    document.addEventListener('fullscreenchange', () => {
+        if (!isFullscreen() && store.getState().playerMode === 'fullscreen') {
+            store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'corner' });
+        }
+    });
+
+    /**
+     * Control visibility is driven from JS rather than `@media (hover: hover)`.
+     * The media query reported the wrong thing on at least one real machine and
+     * left the controls permanently on screen; pointer events tell the truth.
+     */
+    let hideTimer = null;
+    const showControls = () => {
+        clearTimeout(hideTimer);
+        root.classList.add('is-showing-controls');
+    };
+    const hideControls = () => {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => root.classList.remove('is-showing-controls'), 120);
+    };
+
+    stage.addEventListener('mouseenter', showControls);
+    stage.addEventListener('mousemove', showControls);
+    stage.addEventListener('mouseleave', hideControls);
+    // Keyboard users need them too, and touch has no hover to reveal with.
+    stage.addEventListener('focusin', showControls);
+    stage.addEventListener('focusout', hideControls);
+    stage.addEventListener('touchstart', showControls, { passive: true });
 
     return {
         element: root,
@@ -122,23 +168,26 @@ export function createPlayer({ store, viewer }) {
 
             root.dataset.mode = state.playerMode;
             root.hidden = !state.settings.guide_autoplay;
+            // Nothing is streaming during a preview, so the video is hidden
+            // rather than sitting there as a black rectangle pretending to be a
+            // player. The banner already shows the poster.
             root.classList.toggle('is-previewing', previewing);
 
-            // Words, not glyphs: the emoji set read as clutter and did not
-            // match anything else in the Stash UI.
-            playPause.textContent = state.viewerPaused ? 'Play' : 'Pause';
+            // SVG icons, not emoji: these inherit currentColor and size with
+            // the button instead of rendering as platform artwork.
+            setIcon(playPause, state.viewerPaused ? 'play' : 'pause');
             playPause.setAttribute('aria-label', state.viewerPaused ? 'Play' : 'Pause');
             playPause.setAttribute('aria-pressed', state.viewerPaused ? 'true' : 'false');
 
-            mute.textContent = state.muted ? 'Unmute' : 'Mute';
+            setIcon(mute, state.muted ? 'muted' : 'unmuted');
             mute.setAttribute('aria-label', state.muted ? 'Unmute' : 'Mute');
             mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
 
-            theater.textContent = 'Theater';
+            setIcon(theater, 'theater');
             theater.setAttribute('aria-label', 'Theater mode');
             theater.setAttribute('aria-pressed', state.playerMode === 'theater' ? 'true' : 'false');
 
-            fullscreen.textContent = 'Full';
+            setIcon(fullscreen, state.playerMode === 'fullscreen' ? 'exitFullscreen' : 'fullscreen');
             fullscreen.setAttribute('aria-label', 'Fullscreen');
             fullscreen.setAttribute('aria-pressed', state.playerMode === 'fullscreen' ? 'true' : 'false');
 

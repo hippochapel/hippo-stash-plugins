@@ -198,6 +198,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
                 return;
             }
             mount();
+            root.classList.toggle('is-theater', state.playerMode === 'theater');
 
             // Grid and list are two renderers over one state; only the one in
             // use is in the DOM, so neither pays for the other.

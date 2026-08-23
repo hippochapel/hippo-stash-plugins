@@ -81,7 +81,6 @@ describe('controls', () => {
         button.click();
         expect(store.getState().viewerPaused).toBe(true);
         expect(q(player, '.tvguide-play').getAttribute('aria-label')).toBe('Play');
-        expect(q(player, '.tvguide-play').textContent).toBe('Play');
 
         q(player, '.tvguide-play').click();
         expect(store.getState().viewerPaused).toBe(false);
@@ -123,14 +122,28 @@ describe('controls', () => {
         expect(effects).toEqual([]);
     });
 
-    it('labels controls with words rather than emoji', () => {
+    it('uses SVG icons rather than emoji', () => {
         const { player } = mount();
-        const labels = [...player.element.querySelectorAll('.tvguide-player-controls button')]
-            .map((b) => b.textContent);
-        // Starts muted, so the mute control offers the action, not the state.
-        expect(labels).toEqual(['Pause', 'Unmute', 'Back to live', 'Theater', 'Full', 'Watch']);
-        // No emoji anywhere in the control bar.
-        expect(labels.join('')).toMatch(/^[A-Za-z ]+$/);
+        for (const cls of ['.tvguide-play', '.tvguide-mute', '.tvguide-theater', '.tvguide-fullscreen']) {
+            expect(q(player, `${cls} svg`)).not.toBeNull();
+            // No emoji or glyph text left behind beside the icon.
+            expect(q(player, cls).textContent).toBe('');
+        }
+    });
+
+    it('swaps the icon when state changes', () => {
+        const { player } = mount();
+        const before = q(player, '.tvguide-play svg').innerHTML;
+        q(player, '.tvguide-play').click();
+        expect(q(player, '.tvguide-play svg').innerHTML).not.toBe(before);
+        // Exactly one icon -- the old one is removed, not stacked.
+        expect(q(player, '.tvguide-play').querySelectorAll('svg')).toHaveLength(1);
+    });
+
+    it('keeps words on the wider controls', () => {
+        const { player } = mount();
+        expect(q(player, '.tvguide-watch').textContent).toBe('Watch');
+        expect(q(player, '.tvguide-back-to-live').textContent).toBe('Back to live');
     });
 
     it('labels every control for assistive tech', () => {
@@ -142,17 +155,48 @@ describe('controls', () => {
 });
 
 describe('fullscreen fallbacks', () => {
-    it('uses the element fullscreen API when it exists', () => {
+    it('fullscreens the stage, not the whole panel', () => {
+        // The panel's progress readout is rewritten every second; keeping the
+        // fullscreen element off that subtree is what stopped fullscreen
+        // dropping out a tick after it opened.
         const { player } = mount();
-        player.element.requestFullscreen = jest.fn(() => Promise.resolve());
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => Promise.resolve());
+
         player.setMode('fullscreen');
-        expect(player.element.requestFullscreen).toHaveBeenCalled();
+
+        expect(stage.requestFullscreen).toHaveBeenCalled();
+    });
+
+    it('does not re-request fullscreen it is already in', () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => Promise.resolve());
+        Object.defineProperty(document, 'fullscreenElement', { value: stage, configurable: true });
+
+        player.setMode('fullscreen');
+
+        expect(stage.requestFullscreen).not.toHaveBeenCalled();
+        Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+    });
+
+    it('returns to corner when the browser leaves fullscreen on its own', () => {
+        // Esc, or the OS dropping out, must not leave the button claiming
+        // we are still fullscreen.
+        const { store, player } = mount();
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'fullscreen' });
+        expect(store.getState().playerMode).toBe('fullscreen');
+
+        Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+        document.dispatchEvent(new Event('fullscreenchange'));
+
+        expect(store.getState().playerMode).toBe('corner');
     });
 
     it('falls back to the video\'s own fullscreen on iOS', () => {
         // iOS Safari cannot fullscreen a div -- only a video element.
         const { player, viewer } = mount();
-        player.element.requestFullscreen = undefined;
+        q(player, '.tvguide-player-stage').requestFullscreen = undefined;
         viewer.element.webkitEnterFullscreen = jest.fn();
 
         player.setMode('fullscreen');
@@ -162,19 +206,35 @@ describe('fullscreen fallbacks', () => {
 
     it('survives a rejected fullscreen request', () => {
         const { player } = mount();
-        player.element.requestFullscreen = jest.fn(() => Promise.reject(new Error('denied')));
+        q(player, '.tvguide-player-stage').requestFullscreen = jest.fn(() => Promise.reject(new Error('denied')));
         expect(() => player.setMode('fullscreen')).not.toThrow();
     });
 
     it('exits fullscreen when leaving the mode', () => {
         const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
         const exit = jest.fn(() => Promise.resolve());
-        Object.defineProperty(document, 'fullscreenElement', { value: player.element, configurable: true });
+        Object.defineProperty(document, 'fullscreenElement', { value: stage, configurable: true });
         document.exitFullscreen = exit;
 
         player.setMode('corner');
 
         expect(exit).toHaveBeenCalled();
+        Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+    });
+
+    it('does not exit fullscreen it did not open', () => {
+        const { player } = mount();
+        const exit = jest.fn(() => Promise.resolve());
+        Object.defineProperty(document, 'fullscreenElement', {
+            value: document.createElement('div'),
+            configurable: true
+        });
+        document.exitFullscreen = exit;
+
+        player.setMode('corner');
+
+        expect(exit).not.toHaveBeenCalled();
         Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
     });
 });
@@ -216,6 +276,45 @@ describe('progress', () => {
     });
 });
 
+describe('control visibility', () => {
+    it('keeps the controls hidden until the pointer is over the player', () => {
+        // Driven from pointer events, not @media (hover: hover), which reported
+        // the wrong thing on a real machine and left them permanently on.
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+
+        expect(player.element.classList.contains('is-showing-controls')).toBe(false);
+
+        stage.dispatchEvent(new MouseEvent('mouseenter'));
+        expect(player.element.classList.contains('is-showing-controls')).toBe(true);
+    });
+
+    it('hides them again shortly after the pointer leaves', () => {
+        jest.useFakeTimers();
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+
+        stage.dispatchEvent(new MouseEvent('mouseenter'));
+        stage.dispatchEvent(new MouseEvent('mouseleave'));
+        jest.advanceTimersByTime(200);
+
+        expect(player.element.classList.contains('is-showing-controls')).toBe(false);
+        jest.useRealTimers();
+    });
+
+    it('shows them for keyboard focus, which has no hover', () => {
+        const { player } = mount();
+        q(player, '.tvguide-player-stage').dispatchEvent(new Event('focusin', { bubbles: true }));
+        expect(player.element.classList.contains('is-showing-controls')).toBe(true);
+    });
+
+    it('shows them on touch, where there is no hover at all', () => {
+        const { player } = mount();
+        q(player, '.tvguide-player-stage').dispatchEvent(new Event('touchstart'));
+        expect(player.element.classList.contains('is-showing-controls')).toBe(true);
+    });
+});
+
 describe('preview', () => {
     it('offers Back to live only while previewing', () => {
         const { store, player } = mount();
@@ -230,6 +329,9 @@ describe('preview', () => {
 
         expect(q(player, '.tvguide-back-to-live').hidden).toBe(false);
         expect(q(player, '.tvguide-player-caption').textContent).toContain('(preview)');
+        // Nothing is streaming, so the video is hidden rather than sitting
+        // there as a black rectangle pretending to be a player.
+        expect(player.element.classList.contains('is-previewing')).toBe(true);
     });
 
     it('returns to live', () => {

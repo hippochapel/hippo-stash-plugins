@@ -165,39 +165,34 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     // ---- chrome -------------------------------------------------------------
 
     /**
-     * A button per source type, always shown.
+     * A button per source type that actually has channels.
      *
-     * Types with no channels are disabled rather than hidden: an adaptive bar
-     * that shows only what you already have gives you no way to see that Models
-     * or Tags exist as an option at all.
+     * A type you have no channels for is not a mode you can be in, so it is
+     * left out rather than shown greyed.
      */
     function renderTypeBar(state) {
-        const present = new Set(state.allChannels.map((c) => c.source));
+        const types = sel.availableTypes(state);
         const active = state.typeFilter;
 
-        typeBar.hidden = false;
+        typeBar.hidden = types.length < 2;
+        if (typeBar.hidden) {
+            replaceChildren(typeBar);
+            return;
+        }
+
         replaceChildren(
             typeBar,
-            [
-                { value: 'all', label: 'All', enabled: true },
-                ...state.sourceOrder.map((source) => ({
-                    value: source,
-                    label: SOURCE_LABELS[source] || source,
-                    enabled: present.has(source)
-                }))
-            ].map(({ value, label, enabled }) =>
+            [['all', 'All'], ...types.map((t) => [t, SOURCE_LABELS[t] || t])].map(([value, label]) =>
                 el(
                     'button',
                     {
                         class: 'tvguide-typebutton',
                         type: 'button',
-                        disabled: !enabled,
-                        title: enabled ? undefined : `No ${label.toLowerCase()} channels in your lineup yet`,
                         'aria-pressed': active === value ? 'true' : 'false',
                         onclick: () => {
                             store.dispatch({ type: Events.SET_TYPE_FILTER, typeFilter: value });
-                            // Also jump there, so the button works as navigation
-                            // when you are already showing everything.
+                            // Also jump there, so the button navigates when you
+                            // are already showing everything.
                             if (value !== 'all') scrollGroupIntoView(value);
                         }
                     },
@@ -288,6 +283,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     function channelRow(state, group, channel) {
         const pinned = state.pinOrder.includes(channel.id);
         const inPinnedGroup = group.key === PINNED_GROUP;
+        const hasArtwork = channel.logo?.type === 'image';
 
         const row = el(
             'div',
@@ -312,30 +308,19 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                     },
                     pinned ? '★' : '☆'
                 ),
-                // A channel with no artwork already renders as text, so showing
-                // initials *and* the name said the same thing twice. Artwork
-                // channels still get the image plus a name.
-                channel.logo?.type === 'image'
-                    ? el(
-                          'button',
-                          {
-                              class: 'tvguide-logo-button',
-                              type: 'button',
-                              'aria-label': `Open ${channel.name}`,
-                              onclick: () => openSource(channel)
-                          },
-                          logoBadge(channel)
-                      )
-                    : null,
+                // Studio artwork is nearly always a wordmark, so showing the
+                // name beside it said the same thing twice. Artwork replaces
+                // the name; channels without it render the name as their badge.
                 el(
                     'button',
                     {
-                        class: 'tvguide-row-name',
+                        class: hasArtwork ? 'tvguide-logo-button' : 'tvguide-row-name',
                         type: 'button',
                         'aria-label': `Open ${channel.name}`,
+                        title: channel.name,
                         onclick: () => openSource(channel)
                     },
-                    channel.name
+                    hasArtwork ? logoBadge(channel) : channel.name
                 )
             ),
             el('div', { class: 'tvguide-row-track' })

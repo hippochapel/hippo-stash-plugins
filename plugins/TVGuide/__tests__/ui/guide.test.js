@@ -175,21 +175,22 @@ describe('the now-line', () => {
 });
 
 describe('the type bar', () => {
-    it('offers All plus every known type, so Models and Tags are discoverable', () => {
+    it('offers All plus a button per type that has channels', () => {
         const { grid } = mount();
         const labels = [...grid.element.querySelectorAll('.tvguide-typebutton')].map((b) => b.textContent);
-        expect(labels).toEqual(['All', 'Studios', 'Models', 'Tags', 'Groups', 'Filters']);
+        expect(labels).toEqual(['All', 'Studios', 'Tags']);
     });
 
-    it('disables a type with no channels rather than hiding it', () => {
-        // Hiding them left no way to discover that Models exists as an option.
-        const { grid } = mount({ allChannels: [chan('studio:1', 'Alpha')] });
-        const buttons = [...grid.element.querySelectorAll('.tvguide-typebutton')];
+    it('leaves out a type with no channels, since it is not a mode you can be in', () => {
+        const { grid } = mount();
+        const labels = [...grid.element.querySelectorAll('.tvguide-typebutton')].map((b) => b.textContent);
+        expect(labels).not.toContain('Models');
+        expect(labels).not.toContain('Groups');
+    });
 
-        expect(grid.element.querySelector('.tvguide-typebar').hidden).toBe(false);
-        expect(buttons.find((b) => b.textContent === 'Studios').disabled).toBe(false);
-        expect(buttons.find((b) => b.textContent === 'Models').disabled).toBe(true);
-        expect(buttons.find((b) => b.textContent === 'Models').title).toMatch(/no models channels/i);
+    it('hides the bar entirely when there is only one type', () => {
+        const { grid } = mount({ allChannels: [chan('studio:1', 'Alpha')] });
+        expect(grid.element.querySelector('.tvguide-typebar').hidden).toBe(true);
     });
 
     it('jumps to a group as well as filtering to it', () => {
@@ -242,6 +243,30 @@ describe('the A-Z rail', () => {
 
         expect(store.getState().sort).toBe('name');
         expect(onJump).toHaveBeenCalledWith('studio:1');
+    });
+
+    it('scrolls the guide to the first channel for that letter', () => {
+        // The rail-to-grid path was never exercised: the unit test only checked
+        // that onJump fired.
+        const { grid } = mount();
+        const scrolled = [];
+        for (const row of grid.element.querySelectorAll('.tvguide-row')) {
+            row.scrollIntoView = () => scrolled.push(row.dataset.channelId);
+        }
+
+        const letters = [...grid.element.querySelectorAll('.tvguide-rail-letter')];
+        letters.find((b) => b.textContent === 'B').click();
+
+        // First channel whose name starts with B, in the order shown.
+        expect(scrolled).toEqual(['studio:2']);
+    });
+
+    it('spreads the letters down the rail rather than bunching them', () => {
+        const { grid } = mount();
+        const rail = grid.element.querySelector('.tvguide-rail');
+        expect(rail.querySelectorAll('.tvguide-rail-letter').length).toBeGreaterThan(1);
+        // Letters are buttons that grow to fill, not fixed-height text.
+        expect(rail.parentElement.className).toContain('tvguide-grid-main');
     });
 
     it('does not jump when no channel starts with that letter', () => {
@@ -297,14 +322,15 @@ describe('row controls', () => {
         open.mockRestore();
     });
 
-    it('shows no badge for a channel with no artwork, since the name says it', () => {
+    it('shows the name as the badge when a channel has no artwork', () => {
         const { grid } = mount();
         const row = grid.element.querySelector('[data-channel-id="studio:1"]');
         expect(row.querySelector('.tvguide-logo-button')).toBeNull();
         expect(row.querySelector('.tvguide-row-name').textContent).toBe('Alpha');
     });
 
-    it('still shows real artwork alongside the name', () => {
+    it('shows artwork instead of the name, not as well as it', () => {
+        // Studio artwork is a wordmark, so a name beside it repeats itself.
         const withArt = {
             ...chan('studio:1', 'Alpha'),
             logo: { type: 'image', url: '/img.png' }
@@ -313,7 +339,10 @@ describe('row controls', () => {
         const row = grid.element.querySelector('[data-channel-id="studio:1"]');
 
         expect(row.querySelector('.tvguide-logo-button img')).not.toBeNull();
-        expect(row.querySelector('.tvguide-row-name').textContent).toBe('Alpha');
+        expect(row.querySelector('.tvguide-row-name')).toBeNull();
+        // The name is still available to assistive tech and on hover.
+        expect(row.querySelector('.tvguide-logo-button').getAttribute('aria-label')).toBe('Open Alpha');
+        expect(row.querySelector('.tvguide-logo-button').title).toBe('Alpha');
     });
 
     it('labels the pin button by what it will do', () => {
