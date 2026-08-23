@@ -184,6 +184,7 @@ export function start() {
             lineup: readLineup(),
             collapsedGroups: parseJsonArray(readStored(STORAGE_KEYS.collapsed)),
             headWidthPx: Number(readStored(STORAGE_KEYS.headWidth)) || undefined,
+            playerWidthPx: Number(readStored(STORAGE_KEYS.playerWidth)) || undefined,
             playerMode: readPlayerMode()
         });
 

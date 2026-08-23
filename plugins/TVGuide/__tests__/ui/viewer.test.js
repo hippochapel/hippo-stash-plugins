@@ -330,35 +330,6 @@ describe('createViewer', () => {
         });
     });
 
-    describe('poster-only preview', () => {
-        it('stops the stream and shows the scene still', () => {
-            const { viewer } = build();
-            viewer.tune(scene(), 0, true);
-
-            viewer.showPoster({ id: 's9', paths: { screenshot: '/shot-9' } });
-
-            expect(viewer.element.pause).toHaveBeenCalled();
-            expect(viewer.element.hasAttribute('src')).toBe(false);
-            expect(viewer.element.poster).toContain('/shot-9');
-        });
-
-        it('is not dragged back by drift correction', () => {
-            const { viewer, control } = build();
-            viewer.tune(scene(), 0, true);
-            viewer.showPoster({ id: 's9', paths: { screenshot: '/shot-9' } });
-
-            clock += 60000;
-            viewer._checkDrift();
-
-            expect(control.getTime()).toBe(0);
-        });
-
-        it('copes with a scene that has no screenshot', () => {
-            const { viewer } = build();
-            expect(() => viewer.showPoster({ id: 's9', paths: {} })).not.toThrow();
-        });
-    });
-
     describe('resume after the tab was hidden', () => {
         it('re-seeks and plays', () => {
             // iOS pauses the element on app switch and fires nothing that drift
@@ -378,13 +349,6 @@ describe('createViewer', () => {
             const { viewer } = build();
             viewer.tune(scene(), 0, true);
             viewer.setPaused(true);
-            expect(viewer.resume(1000)).toBe(false);
-        });
-
-        it('refuses while showing a still', () => {
-            const { viewer } = build();
-            viewer.tune(scene(), 0, true);
-            viewer.showPoster({ id: 's9', paths: {} });
             expect(viewer.resume(1000)).toBe(false);
         });
 

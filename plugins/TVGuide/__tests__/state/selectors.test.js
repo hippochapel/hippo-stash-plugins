@@ -358,6 +358,16 @@ describe('guide navigation selectors', () => {
         expect(sel.availableTypes(navState())).toEqual(['studio', 'tag']);
     });
 
+    it('offers Pinned as a grouping of its own once something is pinned', () => {
+        // Pinned is a group in the guide like any other, so it belongs in the
+        // same row of buttons -- first, since that is where the group sits.
+        expect(sel.availableTypes(navState({ pinOrder: ['studio:1'] }))).toEqual([
+            'pinned',
+            'studio',
+            'tag'
+        ]);
+    });
+
     it('reports a single type when that is all there is', () => {
         const single = navState({ allChannels: [chan('studio:1', 'Alpha')] });
         expect(sel.availableTypes(single)).toEqual(['studio']);
@@ -435,9 +445,7 @@ describe('guide navigation selectors', () => {
         expect(sel.playerMode(s)).toBe('theater');
         expect(sel.isViewerPaused(s)).toBe(true);
         expect(sel.headWidthPx(s)).toBe(260);
-        expect(sel.isPreviewing(s)).toBe(false);
-        expect(sel.isPreviewing(navState({ preview: { scene: {} } }))).toBe(true);
-        expect(sel.preview(navState({ preview: { scene: {} } }))).not.toBeNull();
+        expect(sel.playerWidthPx(navState({ playerWidthPx: 320 }))).toBe(320);
         expect(sel.guideSearch(navState({ guideSearch: 'x' }))).toBe('x');
         expect(sel.typeFilter(navState({ typeFilter: 'tag' }))).toBe('tag');
         expect(sel.channelGroups(navState({ channelGroups: [{ key: 'studio' }] }))).toHaveLength(1);

@@ -31,7 +31,6 @@ import { Events } from '../state/actions.js';
 import { PoolStatus } from '../state/initialState.js';
 import * as sel from '../state/selectors.js';
 import { logoBadge } from './logoBadge.js';
-import { openSource } from './sourceLink.js';
 import { createChannelRail } from './channelRail.js';
 
 const GROUP_LABELS = { ...SOURCE_LABELS, [PINNED_GROUP]: 'Pinned' };
@@ -62,7 +61,8 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     const rail = createChannelRail({
         store,
-        onJump: (channelId) => scrollChannelIntoView(channelId)
+        // 'start': you asked for T, so a T channel is what should be at the top.
+        onJump: (channelId) => scrollChannelIntoView(channelId, 'start')
     });
 
     const resizer = el('div', {
@@ -88,9 +88,9 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         el('div', { class: 'tvguide-grid-main' }, rail.element, scroll)
     );
 
-    // Hovering previews; leaving the grid puts the banner back on what is live.
-    // Only a hover-sourced focus is reset -- a clicked preview or keyboard focus
-    // must survive the mouse leaving.
+    // Hovering shows a programme in the details; leaving the grid puts them back
+    // on what is playing. Only a hover-sourced focus is reset -- a pinned
+    // programme or keyboard focus must survive the mouse leaving.
     body.addEventListener('mouseleave', () => {
         const state = store.getState();
         if (state.focus?.source !== 'hover') return;
@@ -305,14 +305,18 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                 // Studio artwork is nearly always a wordmark, so showing the
                 // name beside it said the same thing twice. Artwork replaces
                 // the name; channels without it render the name as their badge.
+                //
+                // The badge is the channel button: pressing it watches that
+                // channel, which is what pressing a channel in a guide means.
+                // The way out to Stash lives on the badge in the scene details.
                 el(
                     'button',
                     {
                         class: hasArtwork ? 'tvguide-logo-button' : 'tvguide-row-name',
                         type: 'button',
-                        'aria-label': `Open ${channel.name}`,
-                        title: channel.name,
-                        onclick: () => openSource(channel)
+                        'aria-label': `Watch ${channel.name}`,
+                        title: `Watch ${channel.name}`,
+                        onclick: () => store.dispatch({ type: Events.TUNE, channelId: channel.id })
                     },
                     hasArtwork ? logoBadge(channel) : channel.name
                 )
@@ -487,11 +491,12 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     }
 
     /**
-     * Clicking a live block tunes; clicking anything else previews it as a still.
-     * PREVIEW itself decides which, so the two paths cannot disagree.
+     * Clicking a live block tunes; clicking anything else pins its details and
+     * leaves the player alone. The reducer decides which, so the two paths
+     * cannot disagree.
      */
     function activate(channelId, program) {
-        store.dispatch({ type: Events.PREVIEW, channelId, timeMs: program.startMs });
+        store.dispatch({ type: Events.PIN_DETAILS, channelId, timeMs: program.startMs });
     }
 
     function restyleBlocks(state, channelId, track) {
@@ -539,9 +544,9 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     // ---- navigation ---------------------------------------------------------
 
-    function scrollChannelIntoView(channelId) {
+    function scrollChannelIntoView(channelId, block = 'center') {
         const row = body.querySelector(`.tvguide-row[data-channel-id="${cssEscape(channelId)}"]`);
-        if (row) scrollTo(row, 'center');
+        if (row) scrollTo(row, block);
     }
 
     /**
@@ -552,12 +557,25 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
      * letter also scrolled the player off the top of the screen.
      */
     function scrollTo(element, block) {
+        // 'start' puts the element at the top of the viewport, allowing for the
+        // group header stuck over it. Centring a letter jump left a screenful of
+        // the *previous* letter above the channel you asked for.
         const offset =
             block === 'center'
                 ? Math.max(0, (scroll.clientHeight - element.offsetHeight) / 2)
-                : 0;
+                : stickyHeaderHeight(element);
+
         scroll.scrollTop = Math.max(0, element.offsetTop - offset);
         syncRail(store.getState());
+    }
+
+    /** How much of `element` its own group header would cover once stuck. */
+    function stickyHeaderHeight(element) {
+        if (element.classList.contains('tvguide-group')) return 0;
+        for (let node = element.previousElementSibling; node; node = node.previousElementSibling) {
+            if (node.classList.contains('tvguide-group')) return node.offsetHeight || 0;
+        }
+        return 0;
     }
 
     function cssEscape(value) {

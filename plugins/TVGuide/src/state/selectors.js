@@ -6,7 +6,7 @@
  */
 
 import { programAt, scheduleBetween } from '../domain/schedule.js';
-import { COMPARATORS, DEFAULT_SORT } from '../domain/channelPrefs.js';
+import { COMPARATORS, DEFAULT_SORT, PINNED_GROUP } from '../domain/channelPrefs.js';
 import { programRect, nowLinePct, timeTicks, HALF_HOUR_MS } from '../domain/layout.js';
 import { PoolStatus } from './initialState.js';
 
@@ -27,9 +27,8 @@ export const poolStatus = (state, channelId) =>
 export const channelGroups = (state) => state.channelGroups;
 export const playerMode = (state) => state.playerMode;
 export const isViewerPaused = (state) => state.viewerPaused;
-export const preview = (state) => state.preview;
-export const isPreviewing = (state) => state.preview !== null;
 export const headWidthPx = (state) => state.headWidthPx;
+export const playerWidthPx = (state) => state.playerWidthPx;
 export const guideSearch = (state) => state.guideSearch;
 export const typeFilter = (state) => state.typeFilter;
 
@@ -42,7 +41,10 @@ export const typeFilter = (state) => state.typeFilter;
  */
 export function availableTypes(state) {
     const present = new Set(state.allChannels.map((c) => c.source));
-    return state.sourceOrder.filter((source) => present.has(source));
+    const types = state.sourceOrder.filter((source) => present.has(source));
+    // Pinned is a group in the guide like any other, so it belongs in the same
+    // row of buttons -- first, since that is where the group sits.
+    return state.pinOrder.length > 0 ? [PINNED_GROUP, ...types] : types;
 }
 
 /** A channel's rail letter: its initial, or `#` for anything not A-Z. */

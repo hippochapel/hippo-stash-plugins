@@ -12,6 +12,7 @@ import { formatClock, formatDuration, formatRemaining } from '../domain/format.j
 import { sceneTitle } from '../api/scenes.js';
 import * as sel from '../state/selectors.js';
 import { logoBadge } from './logoBadge.js';
+import { openSource, sourceUrl } from './sourceLink.js';
 
 export function createBanner({ store } = {}) {
     const root = el('div', { class: 'tvguide-banner' });
@@ -20,8 +21,8 @@ export function createBanner({ store } = {}) {
      * Leaving for Stash belongs beside the scene it opens.
      *
      * It used to sit in the player's control bar, where it always meant "the
-     * channel that is tuned" -- so previewing something and pressing it opened
-     * a different scene from the one on screen.
+     * channel that is tuned" -- so pinning another programme's details and
+     * pressing it opened a different scene from the one on screen.
      */
     function watchButton(state, channel) {
         if (!store) return null;
@@ -38,6 +39,28 @@ export function createBanner({ store } = {}) {
                     })
             },
             'Watch in Stash'
+        );
+    }
+
+    /**
+     * The channel badge, as the way into that channel in Stash.
+     *
+     * The badge in the guide row tunes now, so the link that used to live there
+     * needs somewhere to go -- and beside the scene it belongs to is where you
+     * would look for it. A saved filter has no detail page, so it stays a badge.
+     */
+    function channelLink(channel) {
+        if (!sourceUrl(channel)) return el('div', { class: 'tvguide-banner-logo' }, logoBadge(channel));
+        return el(
+            'button',
+            {
+                class: 'tvguide-banner-logo tvguide-banner-logo-button',
+                type: 'button',
+                'aria-label': `Open ${channel.name} in Stash`,
+                title: `Open ${channel.name} in Stash`,
+                onclick: () => openSource(channel)
+            },
+            logoBadge(channel)
         );
     }
 
@@ -62,14 +85,23 @@ export function createBanner({ store } = {}) {
 
             replaceChildren(
                 root,
-                scene.paths?.screenshot
-                    ? el('img', {
-                          class: 'tvguide-banner-poster',
-                          src: scene.paths.screenshot,
-                          alt: '',
-                          loading: 'lazy'
-                      })
-                    : el('div', { class: 'tvguide-banner-logo' }, logoBadge(channel)),
+                // Left column: what the scene looks like, whose channel it is,
+                // and the way out to Stash -- stacked, so the artwork reads as
+                // one block rather than the button floating in the prose.
+                el(
+                    'div',
+                    { class: 'tvguide-banner-art' },
+                    scene.paths?.screenshot
+                        ? el('img', {
+                              class: 'tvguide-banner-poster',
+                              src: scene.paths.screenshot,
+                              alt: '',
+                              loading: 'lazy'
+                          })
+                        : null,
+                    channelLink(channel),
+                    watchButton(state, channel)
+                ),
                 el(
                     'div',
                     { class: 'tvguide-banner-body' },
@@ -86,7 +118,6 @@ export function createBanner({ store } = {}) {
                         ` · ${formatDuration(program.durationMs / 1000)}`,
                         isLive ? ` · ${formatRemaining(program.endMs - state.nowMs)}` : ''
                     ),
-                    watchButton(state, channel),
                     scene.details
                         ? el('p', { class: 'tvguide-banner-details' }, scene.details)
                         : null

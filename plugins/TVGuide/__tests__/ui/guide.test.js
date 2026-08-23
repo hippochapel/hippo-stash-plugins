@@ -217,7 +217,9 @@ describe('the A-Z rail', () => {
         expect(store.getState().channels.map((c) => c.id)).toContain('tag:1');
     });
 
-    it('scrolls the guide to the first channel for that letter', () => {
+    it('puts the first channel for that letter at the top', () => {
+        // Centring it left a screenful of the previous letter above the channel
+        // you actually asked for -- click T, see two S channels.
         const { grid } = mount();
         const scroll = layOut(grid);
 
@@ -225,9 +227,23 @@ describe('the A-Z rail', () => {
             .find((b) => b.textContent === 'B')
             .click();
 
-        // studio:2 is the third laid-out node (header, Alpha, Bravo), centred
-        // in a 300px viewport.
-        expect(scroll.scrollTop).toBe(76 * 2 - (300 - 76) / 2);
+        // studio:2 is the third laid-out node (header, Alpha, Bravo), less the
+        // group header that would otherwise sit stuck over it.
+        expect(scroll.scrollTop).toBe(76 * 2 - 76);
+    });
+
+    it('leaves nothing of the previous letter above it', () => {
+        const { grid } = mount();
+        const scroll = layOut(grid);
+
+        [...grid.element.querySelectorAll('.tvguide-rail-letter')]
+            .find((b) => b.textContent === 'B')
+            .click();
+
+        const target = grid.element.querySelector('[data-channel-id="studio:2"]');
+        const header = grid.element.querySelector('.tvguide-group[data-group="studio"]');
+        // The row starts exactly where the stuck header ends.
+        expect(target.offsetTop - scroll.scrollTop).toBe(header.offsetHeight);
     });
 
     it('scrolls its own container and nothing above it', () => {
@@ -333,16 +349,6 @@ describe('the channel column', () => {
 });
 
 describe('row controls', () => {
-    it('opens the channel source from its name', () => {
-        const { grid } = mount();
-        const open = jest.spyOn(window, 'open').mockImplementation(() => null);
-
-        grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-name').click();
-
-        expect(open).toHaveBeenCalledWith('/studios/1', '_blank', 'noopener');
-        open.mockRestore();
-    });
-
     it('shows the name as the badge when a channel has no artwork', () => {
         const { grid } = mount();
         const row = grid.element.querySelector('[data-channel-id="studio:1"]');
@@ -362,8 +368,19 @@ describe('row controls', () => {
         expect(row.querySelector('.tvguide-logo-button img')).not.toBeNull();
         expect(row.querySelector('.tvguide-row-name')).toBeNull();
         // The name is still available to assistive tech and on hover.
-        expect(row.querySelector('.tvguide-logo-button').getAttribute('aria-label')).toBe('Open Alpha');
-        expect(row.querySelector('.tvguide-logo-button').title).toBe('Alpha');
+        expect(row.querySelector('.tvguide-logo-button').getAttribute('aria-label')).toBe('Watch Alpha');
+        expect(row.querySelector('.tvguide-logo-button').title).toBe('Watch Alpha');
+    });
+
+    it('watches the channel when its badge is pressed', () => {
+        // Pressing a channel in a guide means "put this on". The way out to
+        // Stash lives on the badge in the scene details instead.
+        const { store, grid } = mount({ tunedChannelId: 'tag:1' });
+        grid.element
+            .querySelector('[data-channel-id="studio:2"] .tvguide-row-name')
+            .click();
+
+        expect(store.getState().tunedChannelId).toBe('studio:2');
     });
 
     it('labels the pin button by what it will do', () => {

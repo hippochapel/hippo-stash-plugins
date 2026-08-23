@@ -2,8 +2,8 @@
  * Touch handling.
  *
  * A tap on a touchscreen produces a synthetic `mouseenter`/`mousemove` shortly
- * after the finger lifts. The guide previews a programme on hover, so without a
- * guard a tap would preview whatever the finger happened to pass over on its
+ * after the finger lifts. The guide shows a programme's details on hover, so
+ * without a guard a tap would describe whatever the finger passed over on its
  * way up, fighting the tap that was actually intended.
  *
  * The timestamp is deliberately held ONCE for the whole guide rather than

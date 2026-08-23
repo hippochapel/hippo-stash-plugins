@@ -114,10 +114,6 @@ export function createEffectRunner({
                 if (viewer) viewer.setPaused(effect.paused);
                 return;
 
-            case 'showPoster':
-                if (viewer) viewer.showPoster(effect.scene);
-                return;
-
             case 'tuneViewer':
                 if (viewer) viewer.tune(effect.scene, effect.offsetMs, getState().muted);
                 return;

@@ -151,11 +151,6 @@ describe('controls', () => {
         expect(q(player, '.tvguide-play').querySelectorAll('svg')).toHaveLength(1);
     });
 
-    it('keeps words on the wider controls', () => {
-        const { player } = mount();
-        expect(q(player, '.tvguide-back-to-live').textContent).toBe('Back to live');
-    });
-
     it('freezes the readout while paused', () => {
         // The readout is schedule time, not video time, so it used to run on
         // while the picture stood still.
@@ -208,6 +203,57 @@ describe('fullscreen fallbacks', () => {
         player.setMode('fullscreen');
 
         expect(stage.requestFullscreen).toHaveBeenCalled();
+    });
+
+    it('prefers Safari\'s prefixed element fullscreen over the video\'s own', () => {
+        // Taking the video branch on iPad was the bug: native video fullscreen
+        // ends as soon as the element's src changes, and the viewer reloads the
+        // stream whenever a seek fails to take.
+        const { player, viewer } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.webkitRequestFullscreen = jest.fn();
+        viewer.element.webkitEnterFullscreen = jest.fn();
+
+        player.setMode('fullscreen');
+
+        expect(stage.webkitRequestFullscreen).toHaveBeenCalled();
+        expect(viewer.element.webkitEnterFullscreen).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the video only where nothing else can go fullscreen', () => {
+        const { player, viewer } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = undefined;
+        stage.webkitRequestFullscreen = undefined;
+        viewer.element.webkitEnterFullscreen = jest.fn();
+
+        player.setMode('fullscreen');
+
+        expect(viewer.element.webkitEnterFullscreen).toHaveBeenCalled();
+    });
+
+    it('follows Safari out of fullscreen, which fires only the prefixed event', () => {
+        const { store, player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => Promise.resolve());
+
+        q(player, '.tvguide-fullscreen').click();
+        expect(store.getState().playerMode).toBe('fullscreen');
+
+        document.dispatchEvent(new Event('webkitfullscreenchange'));
+
+        expect(store.getState().playerMode).toBe('corner');
+    });
+
+    it('follows the video out of its own fullscreen', () => {
+        const { store, player, viewer } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => Promise.resolve());
+
+        q(player, '.tvguide-fullscreen').click();
+        viewer.element.dispatchEvent(new Event('webkitendfullscreen'));
+
+        expect(store.getState().playerMode).toBe('corner');
     });
 
     it('does not re-request fullscreen it is already in', () => {
@@ -357,37 +403,100 @@ describe('control visibility', () => {
     });
 });
 
-describe('preview', () => {
-    it('offers Back to live only while previewing', () => {
-        const { store, player } = mount();
-        expect(q(player, '.tvguide-back-to-live').hidden).toBe(true);
-
+describe('pinning another programme', () => {
+    it('carries on playing, untouched', () => {
+        // Reading about a scene that is not on is not a reason to stop the one
+        // that is. There is no still, no pause, and nothing to come back from.
+        const { store, player, viewer } = mount();
         const entries = store.getState().schedules['studio:1'].entries;
+        const before = q(player, '.tvguide-player-caption').textContent;
+
         store.dispatch({
-            type: Events.PREVIEW,
+            type: Events.PIN_DETAILS,
             channelId: 'studio:1',
             timeMs: DAY_START + entries[1].offsetMs + 1000
         });
 
-        expect(q(player, '.tvguide-back-to-live').hidden).toBe(false);
-        expect(q(player, '.tvguide-player-caption').textContent).toContain('(preview)');
-        // Nothing is streaming, so the video is hidden rather than sitting
-        // there as a black rectangle pretending to be a player.
-        expect(player.element.classList.contains('is-previewing')).toBe(true);
+        expect(q(player, '.tvguide-player-caption').textContent).toBe(before);
+        expect(store.getState().viewerPaused).toBe(false);
+        expect(viewer.setPaused).not.toHaveBeenCalled();
+        expect(q(player, '.tvguide-back-to-live')).toBeNull();
+    });
+});
+
+describe('resizing', () => {
+    const grip = (player) => q(player, '.tvguide-player-resizer');
+
+    const drag = (player, from, to) => {
+        grip(player).dispatchEvent(
+            new MouseEvent('pointerdown', { clientX: from[0], clientY: from[1], bubbles: true, cancelable: true })
+        );
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: to[0], clientY: to[1] }));
+        window.dispatchEvent(new MouseEvent('pointerup', {}));
+    };
+
+    it('grows when the corner is dragged out to the left', () => {
+        const { store, player } = mount();
+        drag(player, [400, 200], [300, 200]);
+        expect(store.getState().playerWidthPx).toBe(368);
     });
 
-    it('returns to live', () => {
+    it('grows when it is dragged down, keeping the picture\'s shape', () => {
+        // One number drives the box, so a downward drag has to be expressed as
+        // the width that gives it -- otherwise a corner grip would ignore an
+        // axis it visibly offers.
         const { store, player } = mount();
-        const entries = store.getState().schedules['studio:1'].entries;
-        store.dispatch({
-            type: Events.PREVIEW,
-            channelId: 'studio:1',
-            timeMs: DAY_START + entries[1].offsetMs + 1000
-        });
+        drag(player, [400, 200], [400, 245]);
+        expect(store.getState().playerWidthPx).toBe(348);
+    });
 
-        q(player, '.tvguide-back-to-live').click();
+    it('follows whichever axis moved further on a diagonal drag', () => {
+        const { store, player } = mount();
+        drag(player, [400, 200], [380, 290]);
+        // 90px down is 160px of width; 20px left is only 20.
+        expect(store.getState().playerWidthPx).toBe(428);
+    });
 
-        expect(store.getState().preview).toBeNull();
+    it('shrinks when dragged back in, and stops at a usable size', () => {
+        const { store, player } = mount();
+        drag(player, [400, 200], [900, 200]);
+        expect(store.getState().playerWidthPx).toBe(200);
+    });
+
+    it('will not grow past the point where it would crowd out the guide', () => {
+        const { store, player } = mount();
+        drag(player, [400, 200], [-600, 200]);
+        expect(store.getState().playerWidthPx).toBe(640);
+    });
+
+    it('stops resizing once the pointer is released', () => {
+        const { store, player } = mount();
+        drag(player, [400, 200], [300, 200]);
+        const settled = store.getState().playerWidthPx;
+
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 100, clientY: 200 }));
+
+        expect(store.getState().playerWidthPx).toBe(settled);
+    });
+
+    it('resizes from the keyboard', () => {
+        const { store, player } = mount();
+        const press = (key, shiftKey = false) =>
+            grip(player).dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
+
+        press('ArrowLeft');
+        expect(store.getState().playerWidthPx).toBe(278);
+        press('ArrowRight');
+        expect(store.getState().playerWidthPx).toBe(268);
+        press('ArrowDown', true);
+        expect(store.getState().playerWidthPx).toBe(308);
+    });
+
+    it('shrinks when dragged up, too', () => {
+        const { store, player } = mount();
+        drag(player, [400, 300], [400, 280]);
+        // 20px up is 35.6px of width off 268.
+        expect(store.getState().playerWidthPx).toBe(232);
     });
 });
 

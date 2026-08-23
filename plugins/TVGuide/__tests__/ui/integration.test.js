@@ -174,21 +174,23 @@ describe('grid rendering', () => {
         const row = grid.element.querySelector('[data-channel-id="studio:1"]');
         row.querySelector('.tvguide-block-live').click();
         expect(store.getState().tunedChannelId).toBe('studio:1');
-        expect(store.getState().preview).toBeNull();
     });
 
-    it('previews, rather than tunes, when a block that is not on is clicked', () => {
-        const { store, grid } = mountGrid(baseState());
+    it('pins the details, rather than tuning, when a block that is not on is clicked', () => {
+        const { store, grid } = mountGrid(baseState({ tunedChannelId: 'studio:2' }));
         const blocks = grid.element.querySelectorAll('[data-channel-id="studio:1"] .tvguide-block');
         const future = [...blocks].find((b) => !b.classList.contains('tvguide-block-live'));
 
         future.click();
 
-        expect(store.getState().preview).not.toBeNull();
+        expect(store.getState().focus.channelId).toBe('studio:1');
+        expect(store.getState().focus.source).toBe('sticky');
+        // The player is left strictly alone.
+        expect(store.getState().tunedChannelId).toBe('studio:2');
         expect(store.getState().viewerPaused).toBe(false);
     });
 
-    it('previews a programme on hover', () => {
+    it('shows a programme in the details on hover', () => {
         const { store, grid } = mountGrid(baseState());
         const blocks = grid.element.querySelectorAll('[data-channel-id="studio:1"] .tvguide-block');
         const target = blocks[blocks.length - 1];
@@ -378,6 +380,52 @@ describe('banner', () => {
         spied.element.querySelector('.tvguide-watch').click();
 
         expect(dispatched).toEqual([{ type: Events.EXPAND, channelId: 'studio:1', timeMs }]);
+    });
+
+    it('stacks the artwork, the channel badge and Watch in one column', () => {
+        const store = createStore({ initialState: baseState() });
+        const banner = createBanner({ store });
+        banner.render(store.getState());
+
+        const art = banner.element.querySelector('.tvguide-banner-art');
+        const order = [...art.children].map((n) => n.className.split(' ')[0]);
+        expect(order).toEqual([
+            'tvguide-banner-poster',
+            'tvguide-banner-logo',
+            'tvguide-watch'
+        ]);
+    });
+
+    it('opens the channel in Stash from its badge', () => {
+        // The badge in the guide row watches the channel now, so this is where
+        // the link to Stash went.
+        const store = createStore({ initialState: baseState() });
+        const banner = createBanner({ store });
+        banner.render(store.getState());
+
+        const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+        banner.element.querySelector('.tvguide-banner-logo-button').click();
+
+        expect(open).toHaveBeenCalledWith('/studios/1', '_blank', 'noopener');
+        open.mockRestore();
+    });
+
+    it('leaves a saved filter as a plain badge, having no page to open', () => {
+        const saved = { ...channel('savedFilter:1', 'Favourites'), source: 'savedFilter' };
+        const state = baseState({ allChannels: [saved] });
+        const store = createStore({
+            initialState: {
+                ...state,
+                schedules: { 'savedFilter:1': buildDaySchedule('savedFilter:1', scenes(4), DAY_KEY) },
+                tunedChannelId: 'savedFilter:1',
+                focus: { channelId: 'savedFilter:1', timeMs: NOON }
+            }
+        });
+        const banner = createBanner({ store });
+        banner.render(store.getState());
+
+        expect(banner.element.querySelector('.tvguide-banner-logo')).not.toBeNull();
+        expect(banner.element.querySelector('.tvguide-banner-logo-button')).toBeNull();
     });
 
     it('has nothing to open when nothing is described', () => {

@@ -53,14 +53,13 @@ export function createInitialState() {
         // Wall-clock instant the user paused at, so the player readout can
         // freeze instead of running on with the schedule. 0 when playing.
         pausedAtMs: 0,
-        // A scene being previewed instead of the live stream, or null.
-        preview: null,
 
         // Guide navigation
         guideSearch: '',
         typeFilter: 'all',
         collapsedGroups: [],
         headWidthPx: 200,
+        playerWidthPx: 268,
         sourceOrder: KNOWN_SOURCES,
 
         // Channel manager

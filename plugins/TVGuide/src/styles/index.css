@@ -18,6 +18,10 @@
     --tvguide-border: #333c45;
     --tvguide-row-height: 76px;
     --tvguide-head-width: 200px;
+    --tvguide-player-width: 268px;
+    /* Everything in the player panel that is not the 16:9 picture: the progress
+       bar, the two text lines, the gaps, and the header's own padding. */
+    --tvguide-player-chrome: 86px;
 
     position: fixed;
     inset: 0;
@@ -76,10 +80,15 @@ body.stash-tvguide-active {
     border-bottom: 1px solid var(--tvguide-border);
     /* `flex: 0 0` matters as much as the height: with the default shrink factor
        the stage below squashed this to almost nothing, taking the player with
-       it. The fixed height is what stops hovering scenes with different posters
-       and description lengths from reflowing the page. */
-    flex: 0 0 236px;
-    height: 236px;
+       it. A height that does not depend on the content is what stops hovering
+       scenes with different posters and description lengths from reflowing the
+       page -- so it is derived from the player's width instead, and changes
+       only when the player is deliberately resized. */
+    flex: 0 0 auto;
+    height: max(
+        236px,
+        calc(var(--tvguide-player-width) * 0.5625 + var(--tvguide-player-chrome))
+    );
     box-sizing: border-box;
     overflow: hidden;
 }
@@ -91,6 +100,24 @@ body.stash-tvguide-active {
     min-width: 0;
     height: 100%;
     overflow: hidden;
+}
+
+.tvguide-banner-art {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+    height: 100%;
+}
+
+.tvguide-banner-logo-button {
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    cursor: pointer;
 }
 
 .tvguide-banner-body { min-width: 0; }
@@ -115,8 +142,9 @@ body.stash-tvguide-active {
 
 .tvguide-watch {
     flex: 0 0 auto;
-    align-self: flex-start;
-    margin: 10px 0;
+    align-self: stretch;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .tvguide-banner-details {
@@ -202,6 +230,17 @@ body.stash-tvguide-active {
 .tvguide-topbar .tvguide-close {
     margin-left: 4px;
     flex: 0 0 auto;
+}
+
+/* The chips select a grouping; everything after them acts on the guide. Without
+   a rule between them, "Current" read as one more grouping -- and a border on
+   the button itself cannot say that, because every button already has one. */
+.tvguide-toolbar-divider {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: 1px;
+    margin: 2px 4px;
+    background: var(--tvguide-border);
 }
 
 .tvguide-status {
@@ -1001,12 +1040,37 @@ body.stash-tvguide-active {
 /* ---------- player ---------- */
 
 .tvguide-player {
-    flex: 0 0 268px;
+    position: relative;
+    flex: 0 0 var(--tvguide-player-width);
     display: flex;
     flex-direction: column;
     gap: 4px;
     height: 100%;
     min-width: 0;
+}
+
+/* Bottom left is the only free corner: the panel is anchored to the top right
+   of the header, so that is the one that can move. */
+.tvguide-player-resizer {
+    position: absolute;
+    left: -3px;
+    bottom: -3px;
+    width: 16px;
+    height: 16px;
+    cursor: nesw-resize;
+    touch-action: none;
+    background:
+        linear-gradient(45deg, transparent 42%, var(--tvguide-text-dim) 42%, var(--tvguide-text-dim) 54%, transparent 54%);
+    opacity: 0.5;
+}
+
+.tvguide-player-resizer:hover,
+.tvguide-player-resizer:focus-visible { opacity: 1; }
+
+/* Full width in both, so there is no width left to drag. */
+.tvguide-overlay.is-theater .tvguide-player-resizer,
+.tvguide-player[data-mode='fullscreen'] .tvguide-player-resizer {
+    display: none;
 }
 
 .tvguide-player[hidden] { display: none; }
@@ -1057,8 +1121,7 @@ body.stash-tvguide-active {
 
 .tvguide-player-spacer { flex: 1 1 auto; }
 
-.tvguide-player-button,
-.tvguide-back-to-live {
+.tvguide-player-button {
     min-height: 26px !important;
     padding: 2px 8px !important;
     background: rgba(0, 0, 0, 0.6) !important;
@@ -1069,27 +1132,6 @@ body.stash-tvguide-active {
 }
 
 .tvguide-player-controls { gap: 4px; padding: 6px; }
-
-.tvguide-back-to-live[hidden] { display: none; }
-
-/* Previewing something that is not on: hide the video entirely so it is
-   obvious nothing is playing, leaving only the way back. */
-.tvguide-player.is-previewing .tvguide-player-stage,
-.tvguide-player.is-previewing .tvguide-player-progress {
-    display: none;
-}
-
-.tvguide-player.is-previewing {
-    justify-content: flex-start;
-    align-items: flex-start;
-}
-
-.tvguide-player.is-previewing .tvguide-back-to-live {
-    position: static;
-    background: var(--tvguide-surface-2) !important;
-    border-color: var(--tvguide-border) !important;
-    color: var(--tvguide-text) !important;
-}
 
 .tvguide-spinner {
     position: absolute;
@@ -1170,6 +1212,7 @@ body.stash-tvguide-active {
 
 @media (max-width: 767px) {
     .tvguide-player { flex: 0 0 auto; width: 100%; }
+    .tvguide-player-resizer { display: none; }
     .tvguide-rail { display: none; }
     .tvguide-manager-bulk { width: 100%; }
 }

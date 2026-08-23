@@ -335,13 +335,6 @@ describe('player effects', () => {
         expect(ctx.viewer.setPaused).toHaveBeenCalledWith(true);
     });
 
-    it('shows a poster for a previewed scene', () => {
-        const { run, dispatch, getState, ctx } = harness();
-        const scene = { id: 's1' };
-        run({ type: 'showPoster', scene }, getState, dispatch);
-        expect(ctx.viewer.showPoster).toHaveBeenCalledWith(scene);
-    });
-
     it('is a no-op without a viewer or player', () => {
         const { run, dispatch, getState } = harness({ viewer: null, player: null });
         expect(() => {

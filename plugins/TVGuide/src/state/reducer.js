@@ -12,6 +12,7 @@ import { createInitialState, PoolStatus } from './initialState.js';
 import { buildDaySchedule, dayBucket, programAt } from '../domain/schedule.js';
 import { snapToStep, clampWindowStart, HALF_HOUR_MS } from '../domain/layout.js';
 import {
+    PINNED_GROUP,
     groupChannels,
     flattenGroups,
     setPref,
@@ -43,7 +44,13 @@ function withVisibleChannels(state) {
     // the candidates before grouping rather than hiding rows afterwards.
     const query = state.guideSearch.trim().toLowerCase();
     const candidates = state.allChannels.filter((channel) => {
-        if (state.typeFilter !== 'all' && channel.source !== state.typeFilter) return false;
+        // Pinned is a group in the guide, so it is a filter here too -- it just
+        // selects on the pin list rather than on the channel's source.
+        if (state.typeFilter === PINNED_GROUP) {
+            if (!state.pinOrder.includes(channel.id)) return false;
+        } else if (state.typeFilter !== 'all' && channel.source !== state.typeFilter) {
+            return false;
+        }
         if (query && !channel.name.toLowerCase().includes(query)) return false;
         return true;
     });
@@ -90,10 +97,9 @@ function liveProgram(state, channelId, nowMs) {
 /** Tune effects are built in one place so TICK and TUNE cannot drift apart. */
 function tuneEffects(state, channelId, nowMs) {
     if (!state.settings.guide_autoplay) return [];
-    // A paused viewer must stay paused, and a preview owns the player until it
-    // is dismissed -- otherwise the programme-boundary watcher would restart
-    // playback underneath the user.
-    if (state.viewerPaused || state.preview) return [];
+    // A paused viewer must stay paused -- otherwise the programme-boundary
+    // watcher would restart playback underneath the user.
+    if (state.viewerPaused) return [];
     const program = liveProgram(state, channelId, nowMs);
     if (!program) return [];
     return [Effects.tuneViewer(channelId, program.scene, program.elapsedMs)];
@@ -258,10 +264,10 @@ export function reduce(state, event) {
         case Events.TUNE: {
             if (!state.channels.some((c) => c.id === event.channelId)) return { state, effects };
 
-            // Tuning always ends a preview and any pause: the whole point is to
-            // start watching something. Leaving either set meant the player
-            // never came back, because tuneEffects declines to act on both.
-            const next = { ...state, tunedChannelId: event.channelId, preview: null, viewerPaused: false };
+            // Tuning always lifts a pause: the whole point is to start watching
+            // something. Leaving it set meant the player never came back,
+            // because tuneEffects declines to act while paused.
+            const next = { ...state, tunedChannelId: event.channelId, viewerPaused: false };
             effects.push(Effects.persist(STORAGE_KEYS.tunedChannel, event.channelId));
 
             const channel = state.channels.find((c) => c.id === event.channelId);
@@ -271,9 +277,8 @@ export function reduce(state, event) {
                     program ? `${channel.name}. ${program.scene.title || 'Untitled'}` : `${channel.name}. No programming`
                 )
             );
-            // Move the details onto what is now playing. Without this, tuning
-            // out of a preview left the banner describing the scene you had
-            // been previewing.
+            // Move the details onto what is now playing, rather than leaving
+            // them on whatever programme was last pinned there.
             if (program) {
                 next.focus = {
                     channelId: event.channelId,
@@ -325,7 +330,7 @@ export function reduce(state, event) {
                     focus: {
                         channelId: event.channelId,
                         timeMs: event.timeMs,
-                        // Hover previews are transient; clicks and keyboard focus
+                        // Hovering is transient; clicks and keyboard focus
                         // are not. Mouse-leave only undoes a hover.
                         source: event.source || 'sticky'
                     }
@@ -335,7 +340,8 @@ export function reduce(state, event) {
 
         case Events.FOCUS_LIVE: {
             // The mouse left the grid: put the banner back on what is playing.
-            if (state.preview) return { state, effects };
+            // A pinned programme is a deliberate choice and survives.
+            if (state.focus?.source === 'sticky') return { state, effects };
             const live = liveProgram(state, state.tunedChannelId, state.nowMs);
             // Nothing playing to fall back to: an empty banner is honest, where
             // leaving the hovered scene up would claim it is on.
@@ -370,6 +376,7 @@ export function reduce(state, event) {
                     pinOrder: event.pinOrder || state.pinOrder,
                     collapsedGroups: event.collapsedGroups || state.collapsedGroups,
                     headWidthPx: event.headWidthPx || state.headWidthPx,
+                    playerWidthPx: event.playerWidthPx || state.playerWidthPx,
                     playerMode: event.playerMode || state.playerMode
                 }),
                 effects
@@ -417,6 +424,18 @@ export function reduce(state, event) {
         case Events.SET_TYPE_FILTER:
             if (event.typeFilter === state.typeFilter) return { state, effects };
             return { state: withVisibleChannels({ ...state, typeFilter: event.typeFilter }), effects };
+
+        case Events.SET_PLAYER_WIDTH: {
+            // Clamped so a stray drag cannot leave the player a sliver or push
+            // the guide off the bottom of the screen. Height follows from the
+            // width in CSS, so one number describes the whole box.
+            const playerWidthPx = Math.min(640, Math.max(200, Math.round(event.px)));
+            if (playerWidthPx === state.playerWidthPx) return { state, effects };
+            return {
+                state: { ...state, playerWidthPx },
+                effects: [Effects.persist(STORAGE_KEYS.playerWidth, String(playerWidthPx))]
+            };
+        }
 
         case Events.SET_HEAD_WIDTH: {
             const headWidthPx = Math.min(480, Math.max(120, Math.round(event.px)));
@@ -534,56 +553,40 @@ export function reduce(state, event) {
             return { state: next, effects: tuneEffects(next, next.tunedChannelId, state.nowMs) };
         }
 
-        case Events.PREVIEW: {
+        /**
+         * Clicking a block.
+         *
+         * Something already on is a request to watch it. Anything else is a
+         * request to *read* about it: the details pin to that programme and the
+         * player is left strictly alone. It used to stop the stream and put the
+         * scene up as a still, which meant idly clicking through the schedule
+         * killed whatever you were watching.
+         */
+        case Events.PIN_DETAILS: {
             const schedule = state.schedules[event.channelId];
             if (!schedule) return { state, effects };
             const program = programAt(schedule, event.timeMs, state.dayStartMs);
             if (!program) return { state, effects };
 
-            // Clicking something already live is not a preview -- it is tuning.
             const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
             if (isLive) {
                 return reduce(state, { type: Events.TUNE, channelId: event.channelId });
             }
 
-            // Previewing hides the video entirely, and a hidden element cannot
-            // stay fullscreen -- so leave it deliberately rather than letting
-            // the CSS drop it out from under the browser.
-            const leavingFullscreen = state.playerMode === 'fullscreen';
             return {
                 state: {
                     ...state,
-                    playerMode: leavingFullscreen ? 'corner' : state.playerMode,
-                    preview: { channelId: event.channelId, scene: program.scene, startMs: program.startMs },
                     focus: { channelId: event.channelId, timeMs: program.startMs, source: 'sticky' }
                 },
-                effects: [
-                    ...(leavingFullscreen ? [Effects.setPlayerMode('corner')] : []),
-                    Effects.setPaused(true),
-                    Effects.showPoster(program.scene)
-                ]
+                effects
             };
-        }
-
-        case Events.BACK_TO_LIVE: {
-            if (!state.preview) return { state, effects };
-            const next = { ...state, preview: null, viewerPaused: false };
-            const live = liveProgram(next, next.tunedChannelId, state.nowMs);
-            if (live) {
-                next.focus = {
-                    channelId: next.tunedChannelId,
-                    timeMs: live.startMs,
-                    source: 'sticky'
-                };
-            }
-            return { state: next, effects: tuneEffects(next, next.tunedChannelId, state.nowMs) };
         }
 
         case Events.RESUME_AFTER_HIDDEN: {
             // Returning from another app leaves the element paused with no event
             // that drift correction can act on, so playback is re-established
             // explicitly.
-            if (!state.open || state.viewerPaused || state.preview) return { state, effects };
+            if (!state.open || state.viewerPaused) return { state, effects };
             return { state, effects: tuneEffects(state, state.tunedChannelId, state.nowMs) };
         }
 

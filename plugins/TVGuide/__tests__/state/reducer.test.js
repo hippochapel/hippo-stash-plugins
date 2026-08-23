@@ -991,6 +991,14 @@ describe('grouping', () => {
         expect(state.tunedChannelId).toBe('tag:1');
     });
 
+    it('filters to just the pinned channels', () => {
+        const pinned = run(mixed(), { type: Events.TOGGLE_PIN, channelId: 'tag:1' }).state;
+        const { state } = run(pinned, { type: Events.SET_TYPE_FILTER, typeFilter: 'pinned' });
+
+        expect(state.channels.map((c) => c.id)).toEqual(['tag:1']);
+        expect(state.channelGroups.map((g) => g.key)).toEqual(['pinned']);
+    });
+
     it('still drops a tuned channel that a search has narrowed away', () => {
         // Same code path, but a search is not a reason to stop playing either.
         const tuned = { ...mixed(), tunedChannelId: 'tag:1' };
@@ -1095,160 +1103,88 @@ describe('the player', () => {
     });
 });
 
-describe('preview', () => {
+describe('clicking a programme', () => {
     /** A time inside a programme that is definitely not live. */
     const futureStart = (state) => {
         const entries = state.schedules['studio:1'].entries;
         return DAY_START + entries[1].offsetMs + 1000;
     };
 
-    it('pauses live and shows the poster for a scene that is not on', () => {
+    it('pins the details of a scene that is not on, and nothing else', () => {
+        // It used to stop the stream and put the scene up as a still, so idly
+        // reading through the schedule killed whatever you were watching.
         const state = readyState();
         const { state: next, effects } = run(state, {
-            type: Events.PREVIEW,
+            type: Events.PIN_DETAILS,
             channelId: 'studio:1',
             timeMs: futureStart(state)
         });
 
-        expect(next.preview).not.toBeNull();
-        expect(next.preview.channelId).toBe('studio:1');
-        expect(effectTypes(effects)).toEqual(['setPaused', 'showPoster']);
+        expect(next.focus.channelId).toBe('studio:1');
+        expect(next.focus.timeMs).toBe(futureStart(state) - 1000);
+        expect(effects).toEqual([]);
+        expect(next.tunedChannelId).toBe(state.tunedChannelId);
+        expect(next.viewerPaused).toBe(state.viewerPaused);
+        expect(next.playerMode).toBe(state.playerMode);
     });
 
-    it('makes the preview sticky, so a mouse leave cannot clear it', () => {
+    it('pins them stickily, so a mouse leave cannot clear them', () => {
         const state = readyState();
         const { state: next } = run(state, {
-            type: Events.PREVIEW,
+            type: Events.PIN_DETAILS,
             channelId: 'studio:1',
             timeMs: futureStart(state)
         });
         expect(next.focus.source).toBe('sticky');
     });
 
-    it('tunes instead of previewing when the block is already live', () => {
+    it('keeps the player running through a pinned programme boundary', () => {
+        const state = readyState();
+        const pinned = run(state, {
+            type: Events.PIN_DETAILS,
+            channelId: 'studio:1',
+            timeMs: futureStart(state)
+        }).state;
+
+        const { effects } = run(pinned, { type: Events.TICK, nowMs: NOON + HOUR });
+        expect(effectTypes(effects)).toContain('tuneViewer');
+    });
+
+    it('stays fullscreen', () => {
+        const state = readyState({ playerMode: 'fullscreen' });
+        const { state: next, effects } = run(state, {
+            type: Events.PIN_DETAILS,
+            channelId: 'studio:1',
+            timeMs: futureStart(state)
+        });
+
+        expect(next.playerMode).toBe('fullscreen');
+        expect(effectTypes(effects)).not.toContain('setPlayerMode');
+    });
+
+    it('tunes instead when the block is already live', () => {
         const { state, effects } = run(readyState(), {
-            type: Events.PREVIEW,
+            type: Events.PIN_DETAILS,
             channelId: 'studio:1',
             timeMs: NOON
         });
-        expect(state.preview).toBeNull();
-        expect(effectTypes(effects)).toContain('tuneViewer');
-    });
-
-    it('does not retune while previewing', () => {
-        const state = readyState();
-        const previewing = run(state, {
-            type: Events.PREVIEW,
-            channelId: 'studio:1',
-            timeMs: futureStart(state)
-        }).state;
-
-        const { effects } = run(previewing, { type: Events.TICK, nowMs: NOON + HOUR });
-        expect(effectTypes(effects)).not.toContain('tuneViewer');
-    });
-
-    it('returns to live', () => {
-        const state = readyState();
-        const previewing = run(state, {
-            type: Events.PREVIEW,
-            channelId: 'studio:1',
-            timeMs: futureStart(state)
-        }).state;
-
-        const { state: next, effects } = run(previewing, { type: Events.BACK_TO_LIVE });
-
-        expect(next.preview).toBeNull();
-        expect(next.viewerPaused).toBe(false);
-        expect(effectTypes(effects)).toContain('tuneViewer');
-    });
-
-    it('returns to live even on a channel with nothing scheduled', () => {
-        const state = readyState();
-        const entries = state.schedules['studio:1'].entries;
-        const previewing = run(state, {
-            type: Events.PREVIEW,
-            channelId: 'studio:1',
-            timeMs: DAY_START + entries[1].offsetMs + 1000
-        }).state;
-
-        const { state: next } = run(
-            { ...previewing, tunedChannelId: 'studio:2' },
-            { type: Events.BACK_TO_LIVE }
-        );
-
-        expect(next.preview).toBeNull();
-        expect(next.viewerPaused).toBe(false);
-    });
-
-    it('clicking a live scene ends the preview and brings the player back', () => {
-        // Regression: TUNE left `preview` set, so tuneEffects declined to act
-        // and the player stayed frozen on the previewed still.
-        const state = readyState();
-        const entries = state.schedules['studio:1'].entries;
-        const previewing = run(state, {
-            type: Events.PREVIEW,
-            channelId: 'studio:1',
-            timeMs: DAY_START + entries[1].offsetMs + 1000
-        }).state;
-        expect(previewing.preview).not.toBeNull();
-
-        const { state: next, effects } = run(previewing, { type: Events.TUNE, channelId: 'studio:1' });
-
-        expect(next.preview).toBeNull();
-        expect(next.viewerPaused).toBe(false);
         expect(effectTypes(effects)).toContain('tuneViewer');
     });
 
     it('tuning moves the details onto what is now playing', () => {
-        // Regression: clicking back to a live scene cleared the preview but
-        // left the banner describing the future scene you had previewed.
+        // Otherwise clicking back to a live scene left the details describing
+        // the programme you had pinned.
         const state = readyState();
-        const entries = state.schedules['studio:1'].entries;
-        const futureMs = DAY_START + entries[1].offsetMs + 1000;
-
-        const previewing = run(state, {
-            type: Events.PREVIEW,
+        const pinned = run(state, {
+            type: Events.PIN_DETAILS,
             channelId: 'studio:1',
-            timeMs: futureMs
+            timeMs: futureStart(state)
         }).state;
-        expect(previewing.focus.timeMs).toBe(DAY_START + entries[1].offsetMs);
 
-        const { state: next } = run(previewing, { type: Events.TUNE, channelId: 'studio:1' });
+        const { state: next } = run(pinned, { type: Events.TUNE, channelId: 'studio:1' });
 
-        const live = next.schedules['studio:1'];
-        expect(live).toBeDefined();
-        expect(next.focus.timeMs).not.toBe(previewing.focus.timeMs);
+        expect(next.focus.timeMs).not.toBe(pinned.focus.timeMs);
         expect(next.focus.timeMs).toBeLessThanOrEqual(NOON);
-    });
-
-    it('leaves fullscreen when a preview starts', () => {
-        // Previewing hides the video entirely, and a hidden element cannot stay
-        // fullscreen -- so leave deliberately rather than letting the CSS drop
-        // the browser out from under us.
-        const state = readyState({ playerMode: 'fullscreen' });
-        const entries = state.schedules['studio:1'].entries;
-
-        const { state: next, effects } = run(state, {
-            type: Events.PREVIEW,
-            channelId: 'studio:1',
-            timeMs: DAY_START + entries[1].offsetMs + 1000
-        });
-
-        expect(next.playerMode).toBe('corner');
-        expect(effects).toContainEqual({ type: 'setPlayerMode', mode: 'corner' });
-    });
-
-    it('leaves the player mode alone when previewing from the corner', () => {
-        const state = readyState();
-        const entries = state.schedules['studio:1'].entries;
-        const { state: next, effects } = run(state, {
-            type: Events.PREVIEW,
-            channelId: 'studio:1',
-            timeMs: DAY_START + entries[1].offsetMs + 1000
-        });
-
-        expect(next.playerMode).toBe('corner');
-        expect(effectTypes(effects)).not.toContain('setPlayerMode');
     });
 
     it('leaves focus alone when tuning a channel with no programming', () => {
@@ -1266,20 +1202,46 @@ describe('preview', () => {
         expect(effectTypes(effects)).toContain('announce');
     });
 
-    it('ignores Back to live when nothing is being previewed', () => {
+    it('ignores a channel with no schedule', () => {
         const state = readyState();
-        expect(run(state, { type: Events.BACK_TO_LIVE }).state).toBe(state);
+        expect(run(state, { type: Events.PIN_DETAILS, channelId: 'studio:2', timeMs: NOON }).state).toBe(state);
     });
 
-    it('ignores a preview on a channel with no schedule', () => {
-        const state = readyState();
-        expect(run(state, { type: Events.PREVIEW, channelId: 'studio:2', timeMs: NOON }).state).toBe(state);
-    });
-
-    it('ignores a preview on an empty schedule', () => {
+    it('ignores an empty schedule', () => {
         const state = readyState();
         state.schedules['studio:1'] = { entries: [], totalMs: 0 };
-        expect(run(state, { type: Events.PREVIEW, channelId: 'studio:1', timeMs: NOON }).state).toBe(state);
+        expect(run(state, { type: Events.PIN_DETAILS, channelId: 'studio:1', timeMs: NOON }).state).toBe(state);
+    });
+});
+
+describe('the player size', () => {
+    it('clamps and persists a new width', () => {
+        const { state, effects } = run(readyState(), { type: Events.SET_PLAYER_WIDTH, px: 400.4 });
+        expect(state.playerWidthPx).toBe(400);
+        expect(effects).toContainEqual({
+            type: 'persist',
+            key: STORAGE_KEYS.playerWidth,
+            value: '400'
+        });
+    });
+
+    it('will not go so small it is useless, or so big it crowds out the guide', () => {
+        expect(run(readyState(), { type: Events.SET_PLAYER_WIDTH, px: 10 }).state.playerWidthPx).toBe(200);
+        expect(run(readyState(), { type: Events.SET_PLAYER_WIDTH, px: 5000 }).state.playerWidthPx).toBe(640);
+    });
+
+    it('ignores a width it is already at', () => {
+        const state = readyState();
+        expect(run(state, { type: Events.SET_PLAYER_WIDTH, px: state.playerWidthPx }).state).toBe(state);
+    });
+
+    it('is restored with the other preferences', () => {
+        const { state } = run(readyState(), {
+            type: Events.PREFS_LOADED,
+            prefs: {},
+            playerWidthPx: 420
+        });
+        expect(state.playerWidthPx).toBe(420);
     });
 });
 
@@ -1363,16 +1325,17 @@ describe('focus source', () => {
         expect(live).toBeDefined();
     });
 
-    it('does not disturb a preview when the mouse leaves', () => {
+    it('does not disturb pinned details when the mouse leaves', () => {
+        // Pinning is a deliberate choice; only a hover is transient.
         const state = readyState();
         const entries = state.schedules['studio:1'].entries;
-        const previewing = run(state, {
-            type: Events.PREVIEW,
+        const pinned = run(state, {
+            type: Events.PIN_DETAILS,
             channelId: 'studio:1',
             timeMs: DAY_START + entries[1].offsetMs + 1000
         }).state;
 
-        expect(run(previewing, { type: Events.FOCUS_LIVE }).state).toBe(previewing);
+        expect(run(pinned, { type: Events.FOCUS_LIVE }).state).toBe(pinned);
     });
 
     it('clears the details when the tuned channel has no programming', () => {

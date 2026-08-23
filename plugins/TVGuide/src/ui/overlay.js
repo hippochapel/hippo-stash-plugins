@@ -10,6 +10,7 @@
 import { el, replaceChildren } from './dom.js';
 import { Events } from '../state/actions.js';
 import { SOURCE_LABELS } from '../domain/lineup.js';
+import { PINNED_GROUP } from '../domain/channelPrefs.js';
 import { setIcon } from './icons.js';
 import * as sel from '../state/selectors.js';
 import { createBanner } from './banner.js';
@@ -18,6 +19,8 @@ import { createList } from './list.js';
 import { trapFocus } from './a11y.js';
 import { createManager } from './manager.js';
 import { createPlayer } from './player.js';
+
+const TYPE_LABELS = { ...SOURCE_LABELS, [PINNED_GROUP]: 'Pinned' };
 
 export const HASH = '#tvguide';
 export const BODY_CLASS = 'stash-tvguide-active';
@@ -121,6 +124,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         timeControls,
         searchBox,
         typeBar,
+        el('span', { class: 'tvguide-toolbar-divider', 'aria-hidden': 'true' }),
         el('button', {
             class: 'tvguide-jump',
             type: 'button',
@@ -235,6 +239,9 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             }
             mount();
             root.classList.toggle('is-theater', state.playerMode === 'theater');
+            // On the overlay, not the player: the header sizes itself from this
+            // and custom properties only inherit downwards.
+            root.style.setProperty('--tvguide-player-width', `${state.playerWidthPx}px`);
 
             // Theater makes the overlay itself scrollable, and it inherits
             // whatever the corner layout had scrolled to -- which put the guide
@@ -292,7 +299,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
 
         replaceChildren(
             typeBar,
-            [['all', 'All'], ...types.map((t) => [t, SOURCE_LABELS[t] || t])].map(([value, label]) =>
+            [['all', 'All'], ...types.map((t) => [t, TYPE_LABELS[t] || t])].map(([value, label]) =>
                 el(
                     'button',
                     {

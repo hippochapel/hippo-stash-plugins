@@ -47,14 +47,14 @@ export const Events = {
     // Player
     SET_PLAYER_MODE: 'SET_PLAYER_MODE',
     SET_VIEWER_PAUSED: 'SET_VIEWER_PAUSED',
-    PREVIEW: 'PREVIEW',
-    BACK_TO_LIVE: 'BACK_TO_LIVE',
+    PIN_DETAILS: 'PIN_DETAILS',
     RESUME_AFTER_HIDDEN: 'RESUME_AFTER_HIDDEN',
 
     // Guide navigation
     GUIDE_SEARCH: 'GUIDE_SEARCH',
     SET_TYPE_FILTER: 'SET_TYPE_FILTER',
-    SET_HEAD_WIDTH: 'SET_HEAD_WIDTH'
+    SET_HEAD_WIDTH: 'SET_HEAD_WIDTH',
+    SET_PLAYER_WIDTH: 'SET_PLAYER_WIDTH'
 };
 
 export const Effects = {
@@ -68,7 +68,6 @@ export const Effects = {
     loadCatalog: (source) => ({ type: 'loadCatalog', source }),
     setPlayerMode: (mode) => ({ type: 'setPlayerMode', mode }),
     setPaused: (paused) => ({ type: 'setPaused', paused }),
-    showPoster: (scene) => ({ type: 'showPoster', scene }),
     reloadChannels: () => ({ type: 'loadChannels' }),
     /** Point the viewer at whatever is live on this channel right now. */
     tuneViewer: (channelId, scene, offsetMs) => ({ type: 'tuneViewer', channelId, scene, offsetMs }),
@@ -88,5 +87,6 @@ export const STORAGE_KEYS = {
     pinOrder: 'tvguide_pin_order',
     collapsed: 'tvguide_collapsed_groups',
     headWidth: 'tvguide_head_width',
+    playerWidth: 'tvguide_player_width',
     playerMode: 'tvguide_player_mode'
 };
