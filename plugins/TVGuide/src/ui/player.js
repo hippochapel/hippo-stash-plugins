@@ -55,7 +55,7 @@ export function createPlayer({ store, viewer }) {
             hidden: true,
             onclick: () => store.dispatch({ type: Events.BACK_TO_LIVE })
         },
-        '◀ Back to live'
+        'Back to live'
     );
 
     const controls = el(
@@ -124,19 +124,21 @@ export function createPlayer({ store, viewer }) {
             root.hidden = !state.settings.guide_autoplay;
             root.classList.toggle('is-previewing', previewing);
 
-            playPause.textContent = state.viewerPaused ? '▶' : '⏸';
+            // Words, not glyphs: the emoji set read as clutter and did not
+            // match anything else in the Stash UI.
+            playPause.textContent = state.viewerPaused ? 'Play' : 'Pause';
             playPause.setAttribute('aria-label', state.viewerPaused ? 'Play' : 'Pause');
             playPause.setAttribute('aria-pressed', state.viewerPaused ? 'true' : 'false');
 
-            mute.textContent = state.muted ? '🔇' : '🔊';
+            mute.textContent = state.muted ? 'Unmute' : 'Mute';
             mute.setAttribute('aria-label', state.muted ? 'Unmute' : 'Mute');
             mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
 
-            theater.textContent = '▭';
+            theater.textContent = 'Theater';
             theater.setAttribute('aria-label', 'Theater mode');
             theater.setAttribute('aria-pressed', state.playerMode === 'theater' ? 'true' : 'false');
 
-            fullscreen.textContent = '⛶';
+            fullscreen.textContent = 'Full';
             fullscreen.setAttribute('aria-label', 'Fullscreen');
             fullscreen.setAttribute('aria-pressed', state.playerMode === 'fullscreen' ? 'true' : 'false');
 

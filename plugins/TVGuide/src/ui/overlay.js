@@ -90,34 +90,19 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             'aria-modal': 'true',
             'aria-label': 'TV Guide'
         },
-        el(
-            'header',
-            { class: 'tvguide-header' },
-            banner.element,
-            player.element,
-            // Its own slot rather than absolute positioning: overlaid, it sat on
-            // top of the banner text.
-            el(
-                'div',
-                { class: 'tvguide-close-slot' },
-                el('button', {
-                    class: 'tvguide-close',
-                    type: 'button',
-                    'aria-label': 'Close TV Guide',
-                    text: '×',
-                    onclick: () => close()
-                })
-            )
-        ),
+        // Every control lives in one bar at the very top. The close button used
+        // to sit over the banner text on desktop and below the scene details on
+        // mobile; here it is simply the last thing in the bar, at the top on
+        // both.
         el(
             'div',
-            { class: 'tvguide-toolbar' },
+            { class: 'tvguide-topbar' },
             timeControls,
             guideSearch,
             el('button', {
                 class: 'tvguide-jump',
                 type: 'button',
-                text: '⊙ Current',
+                text: 'Current',
                 'aria-label': 'Jump to the channel playing now',
                 onclick: () => {
                     const { tunedChannelId } = store.getState();
@@ -130,8 +115,16 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
                 text: 'Channels',
                 onclick: () => store.dispatch({ type: Events.MANAGER_OPEN })
             }),
-            status
+            status,
+            el('button', {
+                class: 'tvguide-close',
+                type: 'button',
+                'aria-label': 'Close TV Guide',
+                text: '\u00d7',
+                onclick: () => close()
+            })
         ),
+        el('header', { class: 'tvguide-header' }, banner.element, player.element),
         stage,
         manager.element,
         helpPanel,

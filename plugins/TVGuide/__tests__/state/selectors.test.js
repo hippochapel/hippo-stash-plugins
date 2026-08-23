@@ -288,9 +288,9 @@ describe('guide navigation selectors', () => {
         expect(sel.availableTypes(navState())).toEqual(['studio', 'tag']);
     });
 
-    it('offers no buttons when there is only one type to choose', () => {
+    it('reports a single type when that is all there is', () => {
         const single = navState({ allChannels: [chan('studio:1', 'Alpha')] });
-        expect(sel.availableTypes(single)).toEqual([]);
+        expect(sel.availableTypes(single)).toEqual(['studio']);
     });
 
     it('lists the first letters present, sorted', () => {

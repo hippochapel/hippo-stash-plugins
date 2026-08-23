@@ -39,7 +39,6 @@ export const typeFilter = (state) => state.typeFilter;
  */
 export function availableTypes(state) {
     const present = new Set(state.allChannels.map((c) => c.source));
-    if (present.size < 2) return [];
     return state.sourceOrder.filter((source) => present.has(source));
 }
 

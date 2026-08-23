@@ -161,6 +161,9 @@ export function createViewer({ now = () => Date.now(), document: doc = document 
             // back to a channel does not restart its buffer.
             if (scene && scene.id === currentSceneId && streamUrl === nextUrl) {
                 seek(offsetMs / 1000);
+                // Still has to start playing: this is the path taken when
+                // resuming from a pause, where the element is stopped.
+                play();
                 return;
             }
 

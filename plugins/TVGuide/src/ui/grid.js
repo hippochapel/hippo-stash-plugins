@@ -83,11 +83,12 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         el(
             'div',
             { class: 'tvguide-grid-head' },
-            el('div', { class: 'tvguide-grid-corner' }, rail.element),
+            el('div', { class: 'tvguide-grid-corner' }),
             resizer,
             ticksRow
         ),
-        scroll
+        // The rail sits alongside the rows, pinned, while they scroll past it.
+        el('div', { class: 'tvguide-grid-main' }, rail.element, scroll)
     );
 
     // Hovering previews; leaving the grid puts the banner back on what is live.
@@ -115,6 +116,23 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     let renderedRowSignature = '';
     let dragChannelId = null;
+
+    // Pointer drag on the divider. Pointer events cover mouse and touch in one.
+    resizer.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = store.getState().headWidthPx;
+
+        const onMove = (move) =>
+            store.dispatch({ type: Events.SET_HEAD_WIDTH, px: startWidth + (move.clientX - startX) });
+        const onUp = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+    });
 
     return {
         element: root,
@@ -146,27 +164,52 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     // ---- chrome -------------------------------------------------------------
 
+    /**
+     * A button per source type, always shown.
+     *
+     * Types with no channels are disabled rather than hidden: an adaptive bar
+     * that shows only what you already have gives you no way to see that Models
+     * or Tags exist as an option at all.
+     */
     function renderTypeBar(state) {
-        const types = sel.availableTypes(state);
-        typeBar.hidden = types.length === 0;
-        if (types.length === 0) return;
-
+        const present = new Set(state.allChannels.map((c) => c.source));
         const active = state.typeFilter;
+
+        typeBar.hidden = false;
         replaceChildren(
             typeBar,
-            [['all', 'All'], ...types.map((t) => [t, SOURCE_LABELS[t] || t])].map(([value, label]) =>
+            [
+                { value: 'all', label: 'All', enabled: true },
+                ...state.sourceOrder.map((source) => ({
+                    value: source,
+                    label: SOURCE_LABELS[source] || source,
+                    enabled: present.has(source)
+                }))
+            ].map(({ value, label, enabled }) =>
                 el(
                     'button',
                     {
                         class: 'tvguide-typebutton',
                         type: 'button',
+                        disabled: !enabled,
+                        title: enabled ? undefined : `No ${label.toLowerCase()} channels in your lineup yet`,
                         'aria-pressed': active === value ? 'true' : 'false',
-                        onclick: () => store.dispatch({ type: Events.SET_TYPE_FILTER, typeFilter: value })
+                        onclick: () => {
+                            store.dispatch({ type: Events.SET_TYPE_FILTER, typeFilter: value });
+                            // Also jump there, so the button works as navigation
+                            // when you are already showing everything.
+                            if (value !== 'all') scrollGroupIntoView(value);
+                        }
                     },
                     label
                 )
             )
         );
+    }
+
+    function scrollGroupIntoView(key) {
+        const header = body.querySelector(`.tvguide-group[data-group="${cssEscape(key)}"]`);
+        if (header && header.scrollIntoView) header.scrollIntoView({ block: 'start' });
     }
 
     function renderTicks(state) {
@@ -226,7 +269,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     function groupHeader(group) {
         return el(
             'div',
-            { class: 'tvguide-group', role: 'row' },
+            { class: 'tvguide-group', role: 'row', 'data-group': group.key },
             el(
                 'button',
                 {
@@ -269,17 +312,31 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                     },
                     pinned ? '★' : '☆'
                 ),
+                // A channel with no artwork already renders as text, so showing
+                // initials *and* the name said the same thing twice. Artwork
+                // channels still get the image plus a name.
+                channel.logo?.type === 'image'
+                    ? el(
+                          'button',
+                          {
+                              class: 'tvguide-logo-button',
+                              type: 'button',
+                              'aria-label': `Open ${channel.name}`,
+                              onclick: () => openSource(channel)
+                          },
+                          logoBadge(channel)
+                      )
+                    : null,
                 el(
                     'button',
                     {
-                        class: 'tvguide-logo-button',
+                        class: 'tvguide-row-name',
                         type: 'button',
                         'aria-label': `Open ${channel.name}`,
                         onclick: () => openSource(channel)
                     },
-                    logoBadge(channel)
-                ),
-                el('span', { class: 'tvguide-row-name' }, channel.name)
+                    channel.name
+                )
             ),
             el('div', { class: 'tvguide-row-track' })
         );
@@ -505,21 +562,4 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             store.dispatch({ type: Events.SET_HEAD_WIDTH, px: current + step });
         }
     }
-
-    // Pointer drag on the divider. Pointer events cover mouse and touch in one.
-    resizer.addEventListener('pointerdown', (event) => {
-        event.preventDefault();
-        const startX = event.clientX;
-        const startWidth = store.getState().headWidthPx;
-
-        const onMove = (move) =>
-            store.dispatch({ type: Events.SET_HEAD_WIDTH, px: startWidth + (move.clientX - startX) });
-        const onUp = () => {
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
-        };
-
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
-    });
 }

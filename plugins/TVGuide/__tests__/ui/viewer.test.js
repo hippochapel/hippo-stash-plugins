@@ -313,6 +313,21 @@ describe('createViewer', () => {
             viewer.tune(scene(), 0, true);
             expect(viewer.isPaused()).toBe(false);
         });
+
+        it('starts playing again when retuned to the scene it was paused on', () => {
+            // Regression: the same-scene path only re-seeked and returned, so a
+            // paused element was never told to play and unpausing did nothing.
+            const { viewer } = build();
+            viewer.tune(scene(), 0, true);
+            viewer.element.dispatchEvent(new Event('loadedmetadata'));
+
+            viewer.setPaused(true);
+            viewer.element.play.mockClear();
+
+            viewer.tune(scene(), 60000, true);
+
+            expect(viewer.element.play).toHaveBeenCalled();
+        });
     });
 
     describe('poster-only preview', () => {

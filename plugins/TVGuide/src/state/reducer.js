@@ -252,7 +252,10 @@ export function reduce(state, event) {
         case Events.TUNE: {
             if (!state.channels.some((c) => c.id === event.channelId)) return { state, effects };
 
-            const next = { ...state, tunedChannelId: event.channelId };
+            // Tuning always ends a preview and any pause: the whole point is to
+            // start watching something. Leaving either set meant the player
+            // never came back, because tuneEffects declines to act on both.
+            const next = { ...state, tunedChannelId: event.channelId, preview: null, viewerPaused: false };
             effects.push(Effects.persist(STORAGE_KEYS.tunedChannel, event.channelId));
 
             const channel = state.channels.find((c) => c.id === event.channelId);
@@ -262,6 +265,17 @@ export function reduce(state, event) {
                     program ? `${channel.name}. ${program.scene.title || 'Untitled'}` : `${channel.name}. No programming`
                 )
             );
+            // Move the details onto what is now playing. Without this, tuning
+            // out of a preview left the banner describing the scene you had
+            // been previewing.
+            if (program) {
+                next.focus = {
+                    channelId: event.channelId,
+                    timeMs: program.startMs,
+                    source: 'sticky'
+                };
+            }
+
             effects.push(...tuneEffects(next, event.channelId, state.nowMs));
             return { state: next, effects };
         }

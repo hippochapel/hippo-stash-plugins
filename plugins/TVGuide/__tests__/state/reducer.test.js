@@ -1097,6 +1097,62 @@ describe('preview', () => {
         expect(next.viewerPaused).toBe(false);
     });
 
+    it('clicking a live scene ends the preview and brings the player back', () => {
+        // Regression: TUNE left `preview` set, so tuneEffects declined to act
+        // and the player stayed frozen on the previewed still.
+        const state = readyState();
+        const entries = state.schedules['studio:1'].entries;
+        const previewing = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: DAY_START + entries[1].offsetMs + 1000
+        }).state;
+        expect(previewing.preview).not.toBeNull();
+
+        const { state: next, effects } = run(previewing, { type: Events.TUNE, channelId: 'studio:1' });
+
+        expect(next.preview).toBeNull();
+        expect(next.viewerPaused).toBe(false);
+        expect(effectTypes(effects)).toContain('tuneViewer');
+    });
+
+    it('tuning moves the details onto what is now playing', () => {
+        // Regression: clicking back to a live scene cleared the preview but
+        // left the banner describing the future scene you had previewed.
+        const state = readyState();
+        const entries = state.schedules['studio:1'].entries;
+        const futureMs = DAY_START + entries[1].offsetMs + 1000;
+
+        const previewing = run(state, {
+            type: Events.PREVIEW,
+            channelId: 'studio:1',
+            timeMs: futureMs
+        }).state;
+        expect(previewing.focus.timeMs).toBe(DAY_START + entries[1].offsetMs);
+
+        const { state: next } = run(previewing, { type: Events.TUNE, channelId: 'studio:1' });
+
+        const live = next.schedules['studio:1'];
+        expect(live).toBeDefined();
+        expect(next.focus.timeMs).not.toBe(previewing.focus.timeMs);
+        expect(next.focus.timeMs).toBeLessThanOrEqual(NOON);
+    });
+
+    it('leaves focus alone when tuning a channel with no programming', () => {
+        const state = readyState();
+        const before = state.focus;
+        const { state: next } = run(state, { type: Events.TUNE, channelId: 'studio:2' });
+        expect(next.focus).toBe(before);
+    });
+
+    it('tuning also lifts a pause', () => {
+        const paused = run(readyState(), { type: Events.SET_VIEWER_PAUSED, paused: true }).state;
+        const { state, effects } = run(paused, { type: Events.TUNE, channelId: 'studio:2' });
+
+        expect(state.viewerPaused).toBe(false);
+        expect(effectTypes(effects)).toContain('announce');
+    });
+
     it('ignores Back to live when nothing is being previewed', () => {
         const state = readyState();
         expect(run(state, { type: Events.BACK_TO_LIVE }).state).toBe(state);

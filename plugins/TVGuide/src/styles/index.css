@@ -67,13 +67,18 @@ body.stash-tvguide-active {
 /* ---------- header: detail banner + corner viewer ---------- */
 
 .tvguide-header {
-    position: relative;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: flex-start;
     gap: 16px;
-    padding: 16px;
+    padding: 12px 16px;
     background: var(--tvguide-surface);
     border-bottom: 1px solid var(--tvguide-border);
+    /* Fixed height: without it, hovering scenes with different poster sizes and
+       description lengths reflowed the whole page under the cursor. */
+    height: 200px;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .tvguide-banner {
@@ -81,6 +86,8 @@ body.stash-tvguide-active {
     gap: 14px;
     flex: 1 1 auto;
     min-width: 0;
+    height: 100%;
+    overflow: hidden;
 }
 
 .tvguide-banner-body { min-width: 0; }
@@ -107,6 +114,13 @@ body.stash-tvguide-active {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.tvguide-banner-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     overflow: hidden;
 }
 
@@ -151,11 +165,6 @@ body.stash-tvguide-active {
     white-space: nowrap;
 }
 
-.tvguide-close-slot {
-    flex: 0 0 auto;
-    align-self: flex-start;
-}
-
 .tvguide-close {
     width: 32px;
     height: 32px;
@@ -165,13 +174,18 @@ body.stash-tvguide-active {
 
 /* ---------- toolbar ---------- */
 
-.tvguide-toolbar {
+.tvguide-topbar {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
+    padding: 6px 10px;
     border-bottom: 1px solid var(--tvguide-border);
+    background: var(--tvguide-surface);
+}
+
+.tvguide-topbar .tvguide-close {
+    margin-left: 4px;
+    flex: 0 0 auto;
 }
 
 .tvguide-status {
@@ -344,9 +358,18 @@ body.stash-tvguide-active {
 }
 
 .tvguide-row-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    color: inherit;
+    text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: pointer;
 }
 
 .tvguide-row-track {
@@ -509,7 +532,18 @@ body.stash-tvguide-active {
 /* ---------- responsive ---------- */
 
 @media (max-width: 767px) {
+    .tvguide-topbar {
+        flex-wrap: wrap;
+    }
+
+    /* Close first, so it is at the very top rather than below the details. */
+    .tvguide-topbar .tvguide-close {
+        order: -1;
+        margin-left: auto;
+    }
+
     .tvguide-header {
+        height: auto;
         flex-direction: column;
         /* The viewer stays put while the list scrolls under it. */
         position: sticky;
@@ -743,6 +777,11 @@ body.stash-tvguide-active {
     color: var(--tvguide-accent);
 }
 
+.tvguide-typebutton[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .tvguide-search {
     min-width: 140px;
     max-width: 220px;
@@ -762,15 +801,23 @@ body.stash-tvguide-active {
 .tvguide-time-controls[hidden] { display: none; }
 
 /* A-Z rail, pinned to the left of the channel column. */
+.tvguide-grid-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.tvguide-grid-main .tvguide-grid-scroll { flex: 1 1 auto; }
+
 .tvguide-rail {
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
+    flex: 0 0 20px;
     display: flex;
     flex-direction: column;
+    align-items: center;
     justify-content: flex-start;
-    width: 18px;
+    padding: 2px 0;
+    border-right: 1px solid var(--tvguide-border);
+    background: var(--tvguide-surface);
     overflow: hidden;
 }
 
@@ -820,9 +867,7 @@ body.stash-tvguide-active {
 
 /* ---------- rows ---------- */
 
-.tvguide-row-head {
-    padding-left: 22px;
-}
+
 
 .tvguide-pin,
 .tvguide-logo-button {
@@ -869,10 +914,12 @@ body.stash-tvguide-active {
 /* ---------- player ---------- */
 
 .tvguide-player {
-    flex: 0 0 320px;
+    flex: 0 0 300px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
+    height: 100%;
+    min-width: 0;
 }
 
 .tvguide-player[hidden] { display: none; }
@@ -889,6 +936,9 @@ body.stash-tvguide-active {
     width: 100%;
     aspect-ratio: 16 / 9;
     border-radius: 0;
+    /* Reserve the space before the poster loads, so switching scenes cannot
+       resize the header. */
+    background: #000;
 }
 
 .tvguide-player-controls {
@@ -908,9 +958,17 @@ body.stash-tvguide-active {
 /* Reveal on hover only where there is a pointer; on touch there is no hover to
    reveal them with, so they stay visible. */
 @media (hover: hover) {
-    .tvguide-player-controls { opacity: 0; }
+    .tvguide-player-controls {
+        opacity: 0;
+        pointer-events: none;
+    }
+
     .tvguide-player-stage:hover .tvguide-player-controls,
-    .tvguide-player-stage:focus-within .tvguide-player-controls { opacity: 1; }
+    /* Keyboard focus only -- :focus-within would keep them open after a click. */
+    .tvguide-player-stage:has(:focus-visible) .tvguide-player-controls {
+        opacity: 1;
+        pointer-events: auto;
+    }
 }
 
 .tvguide-player-spacer { flex: 1 1 auto; }
@@ -918,10 +976,16 @@ body.stash-tvguide-active {
 .tvguide-player-button,
 .tvguide-watch,
 .tvguide-back-to-live {
-    background: rgba(0, 0, 0, 0.55) !important;
-    border-color: rgba(255, 255, 255, 0.25) !important;
+    min-height: 26px !important;
+    padding: 2px 8px !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
     color: #fff !important;
+    font-size: 11px;
+    white-space: nowrap;
 }
+
+.tvguide-player-controls { gap: 4px; padding: 6px; }
 
 .tvguide-back-to-live[hidden] { display: none; }
 
@@ -958,8 +1022,8 @@ body.stash-tvguide-active {
 
 .tvguide-banner-poster {
     flex: 0 0 auto;
-    width: 128px;
-    aspect-ratio: 16 / 9;
+    width: 160px;
+    height: 90px;
     object-fit: cover;
     border-radius: 4px;
     background: var(--tvguide-surface-2);

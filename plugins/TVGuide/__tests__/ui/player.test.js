@@ -81,6 +81,7 @@ describe('controls', () => {
         button.click();
         expect(store.getState().viewerPaused).toBe(true);
         expect(q(player, '.tvguide-play').getAttribute('aria-label')).toBe('Play');
+        expect(q(player, '.tvguide-play').textContent).toBe('Play');
 
         q(player, '.tvguide-play').click();
         expect(store.getState().viewerPaused).toBe(false);
@@ -120,6 +121,16 @@ describe('controls', () => {
         // EXPAND is the navigate-away event; it is not a player mode.
         expect(store.getState().playerMode).toBe('corner');
         expect(effects).toEqual([]);
+    });
+
+    it('labels controls with words rather than emoji', () => {
+        const { player } = mount();
+        const labels = [...player.element.querySelectorAll('.tvguide-player-controls button')]
+            .map((b) => b.textContent);
+        // Starts muted, so the mute control offers the action, not the state.
+        expect(labels).toEqual(['Pause', 'Unmute', 'Back to live', 'Theater', 'Full', 'Watch']);
+        // No emoji anywhere in the control bar.
+        expect(labels.join('')).toMatch(/^[A-Za-z ]+$/);
     });
 
     it('labels every control for assistive tech', () => {

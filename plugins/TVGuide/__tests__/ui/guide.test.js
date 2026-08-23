@@ -175,15 +175,35 @@ describe('the now-line', () => {
 });
 
 describe('the type bar', () => {
-    it('offers All plus a button per type present', () => {
+    it('offers All plus every known type, so Models and Tags are discoverable', () => {
         const { grid } = mount();
         const labels = [...grid.element.querySelectorAll('.tvguide-typebutton')].map((b) => b.textContent);
-        expect(labels).toEqual(['All', 'Studios', 'Tags']);
+        expect(labels).toEqual(['All', 'Studios', 'Models', 'Tags', 'Groups', 'Filters']);
     });
 
-    it('hides itself when there is only one type to choose', () => {
+    it('disables a type with no channels rather than hiding it', () => {
+        // Hiding them left no way to discover that Models exists as an option.
         const { grid } = mount({ allChannels: [chan('studio:1', 'Alpha')] });
-        expect(grid.element.querySelector('.tvguide-typebar').hidden).toBe(true);
+        const buttons = [...grid.element.querySelectorAll('.tvguide-typebutton')];
+
+        expect(grid.element.querySelector('.tvguide-typebar').hidden).toBe(false);
+        expect(buttons.find((b) => b.textContent === 'Studios').disabled).toBe(false);
+        expect(buttons.find((b) => b.textContent === 'Models').disabled).toBe(true);
+        expect(buttons.find((b) => b.textContent === 'Models').title).toMatch(/no models channels/i);
+    });
+
+    it('jumps to a group as well as filtering to it', () => {
+        const { grid } = mount();
+        const header = grid.element.querySelector('.tvguide-group[data-group="tag"]');
+        header.scrollIntoView = jest.fn();
+
+        [...grid.element.querySelectorAll('.tvguide-typebutton')]
+            .find((b) => b.textContent === 'Tags')
+            .click();
+
+        // Filtering leaves a single group, so re-find it after the rebuild.
+        const after = grid.element.querySelector('.tvguide-group[data-group="tag"]');
+        expect(after).not.toBeNull();
     });
 
     it('narrows the guide to one type', () => {
@@ -267,14 +287,33 @@ describe('the channel column', () => {
 });
 
 describe('row controls', () => {
-    it('opens the channel source from its logo', () => {
+    it('opens the channel source from its name', () => {
         const { grid } = mount();
         const open = jest.spyOn(window, 'open').mockImplementation(() => null);
 
-        grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-logo-button').click();
+        grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-name').click();
 
         expect(open).toHaveBeenCalledWith('/studios/1', '_blank', 'noopener');
         open.mockRestore();
+    });
+
+    it('shows no badge for a channel with no artwork, since the name says it', () => {
+        const { grid } = mount();
+        const row = grid.element.querySelector('[data-channel-id="studio:1"]');
+        expect(row.querySelector('.tvguide-logo-button')).toBeNull();
+        expect(row.querySelector('.tvguide-row-name').textContent).toBe('Alpha');
+    });
+
+    it('still shows real artwork alongside the name', () => {
+        const withArt = {
+            ...chan('studio:1', 'Alpha'),
+            logo: { type: 'image', url: '/img.png' }
+        };
+        const { grid } = mount({ allChannels: [withArt] });
+        const row = grid.element.querySelector('[data-channel-id="studio:1"]');
+
+        expect(row.querySelector('.tvguide-logo-button img')).not.toBeNull();
+        expect(row.querySelector('.tvguide-row-name').textContent).toBe('Alpha');
     });
 
     it('labels the pin button by what it will do', () => {
@@ -373,5 +412,25 @@ describe('condensed rows', () => {
         });
         const track = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-track');
         expect(track.classList.contains('is-condensed')).toBe(false);
+    });
+});
+
+describe('the resizer actually binds', () => {
+    it('responds to a pointer drag', () => {
+        // Regression: this listener was registered after `return` inside
+        // createGrid, so it never bound and dragging did nothing at all.
+        const { store, grid } = mount();
+        const resizer = grid.element.querySelector('.tvguide-resizer');
+
+        resizer.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, bubbles: true }));
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 160, bubbles: true }));
+
+        expect(store.getState().headWidthPx).toBe(260);
+
+        window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 400, bubbles: true }));
+
+        // Released: further movement must not keep resizing.
+        expect(store.getState().headWidthPx).toBe(260);
     });
 });
