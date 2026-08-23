@@ -1,2 +1,8 @@
 **/__pycache__/
 .codex
+node_modules/
+coverage/
+
+# Build output -- generated from plugins/TVGuide/src by esbuild
+plugins/TVGuide/tvguide.js
+plugins/TVGuide/tvguide.css

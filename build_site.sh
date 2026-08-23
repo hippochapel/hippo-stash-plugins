@@ -29,6 +29,14 @@ buildPlugin()
     version=$(git log -n 1 --pretty=format:%h -- "$dir"/*)
     updated=$(TZ=UTC0 git log -n 1 --date="format-local:%F %T" --pretty=format:%ad -- "$dir"/*)
     
+    # Plugins whose source needs bundling declare an npm "build" script; run it
+    # so the zip picks up fresh artifacts. Fail loudly rather than shipping a
+    # stale or missing bundle.
+    if [ -f "$dir/package.json" ] && grep -q '"build"' "$dir/package.json"; then
+        echo "  building $plugin_id"
+        ( cd "$dir" && npm ci --silent && npm run build --silent ) || exit 1
+    fi
+
     # create the zip file
     # copy other files
     zipfile=$(realpath "$outdir/$plugin_id.zip")
@@ -67,6 +75,12 @@ buildPlugin()
     echo "" >> "$outdir"/index.yml
 }
 
-find ./plugins -mindepth 1 -name *.yml | while read file; do
+# Prune node_modules and coverage before looking for plugin manifests. Both
+# contain .yml files that are not plugins, and node_modules in particular is
+# created by the build step above -- without the prune, a bundled plugin's
+# dependencies would be picked up as plugins on the very same run.
+find ./plugins -mindepth 1 \
+    \( -name node_modules -o -name coverage -o -name .git \) -prune \
+    -o -name '*.yml' -print | while read file; do
     buildPlugin "$file"
 done

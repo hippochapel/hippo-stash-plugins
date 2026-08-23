@@ -1,0 +1,34 @@
+name: TV Guide
+description: Presents your library as live TV channels with a cable-style programme guide. Channels are built from studios, tags, groups or saved filters, and every channel is always broadcasting.
+version: "1.0"
+url: https://github.com/hippochapel/hippo-stash-plugins/tree/main/plugins/TVGuide
+ui:
+  javascript:
+    - tvguide.js
+  css:
+    - tvguide.css
+settings:
+  guide_min_scenes:
+    displayName: Minimum Scenes Per Channel
+    description: "Sources with fewer scenes than this are not turned into channels. Default 5."
+    type: NUMBER
+  guide_window_hours:
+    displayName: Guide Window (hours)
+    description: "How many hours of programming the guide grid shows at once. Default 3."
+    type: NUMBER
+  guide_pool_cap:
+    displayName: Scenes Per Channel
+    description: "Maximum scenes drawn into a channel's schedule. Lower values load faster on large libraries. Default 100."
+    type: NUMBER
+  guide_autoplay:
+    displayName: Autoplay Preview
+    description: "Play the tuned channel in the corner viewer. Disable for a guide-only, no-video view."
+    type: BOOLEAN
+  guide_start_muted:
+    displayName: Start Muted
+    description: "Start the corner viewer muted. Browsers block autoplay with sound, so disabling this may stop playback from starting on its own."
+    type: BOOLEAN
+  guide_navbar_button:
+    displayName: Show Navbar Button
+    description: "Show the TV Guide button in the Stash navigation bar. The guide is always reachable at #tvguide."
+    type: BOOLEAN
