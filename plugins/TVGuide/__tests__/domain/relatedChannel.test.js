@@ -16,6 +16,12 @@ describe('relatedChannel', () => {
         });
     });
 
+    it('uses a related entity image immediately when one is available', () => {
+        expect(relatedChannel('performer', {
+            id: '7', name: 'Avery Lane', image_path: '/performer/7/image?t=1'
+        }).logo).toEqual({ type: 'image', url: '/performer/7/image?t=1' });
+    });
+
     it('rejects unsupported sources and incomplete scene entities', () => {
         expect(relatedChannel('studio', { id: '1', name: 'Studio' })).toBeNull();
         expect(relatedChannel('tag', { id: '', name: 'Outdoor' })).toBeNull();

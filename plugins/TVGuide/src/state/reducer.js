@@ -334,6 +334,7 @@ export function reduce(state, event) {
             const next = withVisibleChannels({
                 ...cleared,
                 temporaryChannel: candidate,
+                guideScrollChannelId: candidate.id,
                 allChannels: [...cleared.allChannels, candidate],
                 pools: {
                     ...cleared.pools,

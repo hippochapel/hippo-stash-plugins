@@ -204,7 +204,10 @@ body.stash-tvguide-active {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    overflow: hidden;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 4px;
 }
 
 .tvguide-banner-empty { color: var(--tvguide-text-dim); }

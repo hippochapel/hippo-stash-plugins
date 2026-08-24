@@ -96,6 +96,7 @@ describe('temporary related channels', () => {
         expect(state.temporaryChannel.id).toBe('performer:7');
         expect(state.tunedChannelId).toBe('performer:7');
         expect(state.allChannels.map((c) => c.id)).toContain('performer:7');
+        expect(state.guideScrollChannelId).toBe('performer:7');
         expect(effectTypes(effects)).toContain('fetchPool');
     });
 

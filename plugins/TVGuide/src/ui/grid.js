@@ -276,6 +276,8 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
     function channelRow(state, group, channel) {
         const pinned = state.pinOrder.includes(channel.id);
+        const temporary = state.temporaryChannel?.id === channel.id;
+        const savedTemporary = temporary && state.savedTemporaryChannelId === channel.id;
         const inPinnedGroup = group.key === PINNED_GROUP;
         const hasArtwork = channel.logo?.type === 'image';
 
@@ -296,11 +298,18 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                     {
                         class: 'tvguide-pin',
                         type: 'button',
-                        'aria-label': pinned ? `Unpin ${channel.name}` : `Pin ${channel.name}`,
-                        'aria-pressed': pinned ? 'true' : 'false',
-                        onclick: () => store.dispatch({ type: Events.TOGGLE_PIN, channelId: channel.id })
+                        'aria-label': temporary
+                            ? savedTemporary ? `${channel.name} saved` : `Save temporary channel ${channel.name}`
+                            : pinned ? `Unpin ${channel.name}` : `Pin ${channel.name}`,
+                        title: temporary ? savedTemporary ? 'Saved' : 'Save channel' : undefined,
+                        'aria-pressed': temporary ? null : pinned ? 'true' : 'false',
+                        disabled: savedTemporary,
+                        onclick: () => store.dispatch({
+                            type: temporary ? Events.SAVE_TEMPORARY_CHANNEL : Events.TOGGLE_PIN,
+                            channelId: channel.id
+                        })
                     },
-                    pinned ? '★' : '☆'
+                    temporary ? savedTemporary ? '✓' : '＋' : pinned ? '★' : '☆'
                 ),
                 // Studio artwork is nearly always a wordmark, so showing the
                 // name beside it said the same thing twice. Artwork replaces

@@ -26,8 +26,8 @@ describe('fetchScenePool', () => {
     });
 
     it('requests related performer and tag identifiers for scene details', () => {
-        expect(SCENE_POOL_QUERY).toContain('performers { id name }');
-        expect(SCENE_POOL_QUERY).toContain('tags { id name }');
+        expect(SCENE_POOL_QUERY).toContain('performers { id name image_path }');
+        expect(SCENE_POOL_QUERY).toContain('tags { id name image_path }');
     });
 
     it('returns the scenes', async () => {

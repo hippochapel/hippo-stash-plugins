@@ -1,5 +1,5 @@
-import { monogram } from './format.js';
 import { makeChannelId } from './lineup.js';
+import { resolveLogo } from './logo.js';
 
 const FILTERS = {
     performer: (id) => ({ performers: { value: [id], modifier: 'INCLUDES' } }),
@@ -16,7 +16,7 @@ export function relatedChannel(source, entity) {
         id: makeChannelId(source, id),
         source,
         name,
-        logo: { type: 'monogram', ...monogram(name) },
+        logo: resolveLogo(entity.image_path, name),
         sceneCount: 0,
         sceneFilter: FILTERS[source](id)
     };
