@@ -24,7 +24,6 @@
 import { el, replaceChildren } from './dom.js';
 import { formatClock } from '../domain/format.js';
 import { sceneTitle } from '../api/scenes.js';
-import { condenseRow, shouldCondense } from '../domain/schedule.js';
 import { PINNED_GROUP } from '../domain/channelPrefs.js';
 import { SOURCE_LABELS } from '../domain/lineup.js';
 import { Events } from '../state/actions.js';
@@ -389,61 +388,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             return;
         }
 
-        // Measured, not guessed: whether blocks are legible depends on the real
-        // track width, which changes with the window and the column resize.
-        // A zero width means we have not been laid out yet -- do not condense on
-        // no information.
-        const trackWidth = track.clientWidth;
-        const programs = blocks.map((b) => b.program);
-
-        if (trackWidth > 0 && shouldCondense(programs, trackWidth)) {
-            renderCondensed(state, channelId, track, programs);
-            return;
-        }
-
-        track.classList.remove('is-condensed');
         replaceChildren(track, blocks.map((block) => renderBlock(channelId, block)));
-    }
-
-    /**
-     * A channel of two-minute scenes is unreadable as thirty slivers, so the row
-     * collapses to counts either side of a labelled few. These segments are laid
-     * out for readability rather than to scale, so this row no longer lines up
-     * with the clock -- the live highlight identifies what is on.
-     */
-    function renderCondensed(state, channelId, track, programs) {
-        const anchorMs =
-            state.nowMs >= state.windowStartMs && state.nowMs < sel.windowEndMs(state)
-                ? state.nowMs
-                : state.windowStartMs;
-
-        track.classList.add('is-condensed');
-        replaceChildren(
-            track,
-            condenseRow(programs, anchorMs).map((segment) =>
-                segment.kind === 'count'
-                    ? el('div', { class: 'tvguide-condensed-count' }, `${segment.n} scenes`)
-                    : condensedBlock(state, channelId, segment.program)
-            )
-        );
-    }
-
-    function condensedBlock(state, channelId, program) {
-        const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
-        return el(
-            'div',
-            {
-                class: `tvguide-block tvguide-condensed-block${isLive ? ' tvguide-block-live' : ''}`,
-                role: 'gridcell',
-                tabindex: '-1',
-                'data-start-ms': String(program.startMs),
-                'data-end-ms': String(program.endMs),
-                'aria-label': `${sceneTitle(program.scene)}, ${formatClock(program.startMs)}`,
-                onclick: () => activate(channelId, program)
-            },
-            el('span', { class: 'tvguide-block-title' }, sceneTitle(program.scene)),
-            el('span', { class: 'tvguide-block-time' }, formatClock(program.startMs))
-        );
     }
 
     function renderBlock(channelId, { program, rect, isLive, isFocused }) {

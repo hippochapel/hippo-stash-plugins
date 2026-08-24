@@ -492,14 +492,14 @@ body.stash-tvguide-active {
 
 .tvguide-block {
     position: absolute;
+    /* Keep each block's rendered size equal to its time-scaled width. */
+    box-sizing: border-box;
     top: 4px;
     bottom: 4px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 2px;
-    /* Short scenes still have to be clickable. */
-    min-width: 34px;
     padding: 6px 8px;
     border: 1px solid var(--tvguide-border);
     border-radius: 4px;
@@ -1058,33 +1058,6 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
 
 .tvguide-row-pinned { cursor: grab; }
 
-/* Condensed rows are laid out for readability, not to scale -- a two-minute
-   scene cannot carry a title at its true width. */
-.tvguide-row-track.is-condensed {
-    display: flex;
-    align-items: stretch;
-    gap: 4px;
-    padding: 4px 0;
-}
-
-.tvguide-row-track.is-condensed .tvguide-block {
-    position: static;
-    flex: 1 1 0;
-    min-width: 0;
-}
-
-.tvguide-condensed-count {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    padding: 0 10px;
-    border-radius: 4px;
-    background: var(--tvguide-surface-2);
-    color: var(--tvguide-text-dim);
-    font-size: 11px;
-    white-space: nowrap;
-}
-
 /* ---------- player ---------- */
 
 .tvguide-player {
@@ -1301,6 +1274,28 @@ body.stash-tvguide-scroll-soft-lock {
 .tvguide-overlay.is-theater .tvguide-stage {
     flex: 0 0 auto;
     min-height: 70vh;
+}
+
+/* The overlay is deliberately left untouched while Safari enters native
+   fullscreen. If it was in theater mode, its viewport caps must not survive
+   on the stage that has just become fullscreen. */
+.tvguide-player-stage:fullscreen,
+.tvguide-player-stage:-webkit-full-screen,
+.tvguide-player-stage.tvguide-pseudo-fullscreen {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+}
+
+.tvguide-player-stage:fullscreen .tvguide-viewer-video,
+.tvguide-player-stage:-webkit-full-screen .tvguide-viewer-video,
+.tvguide-player-stage.tvguide-pseudo-fullscreen .tvguide-viewer-video {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    aspect-ratio: auto;
+    object-fit: contain;
 }
 
 .tvguide-manager-bulk { display: flex; gap: 6px; }

@@ -1187,6 +1187,16 @@ describe('the player', () => {
         expect(effectTypes(effects)).toEqual(['setPlayerMode', 'persist']);
     });
 
+    it('remembers theater as the mode to restore after fullscreen', () => {
+        const { state } = run(readyState({ playerMode: 'theater' }), {
+            type: Events.SET_PLAYER_MODE,
+            mode: 'fullscreen'
+        });
+
+        expect(state.playerMode).toBe('fullscreen');
+        expect(state.fullscreenReturnMode).toBe('theater');
+    });
+
     it('ignores a mode it is already in', () => {
         const state = readyState();
         expect(run(state, { type: Events.SET_PLAYER_MODE, mode: 'corner' }).state).toBe(state);

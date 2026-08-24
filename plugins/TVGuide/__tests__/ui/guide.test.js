@@ -1,5 +1,5 @@
 /**
- * The Phase 3 grid: grouping, the corrected now-line, condensed rows, pinning
+ * The Phase 3 grid: grouping, the corrected now-line, pinning
  * from the guide, the type bar and the A-Z rail.
  */
 
@@ -465,54 +465,6 @@ describe('leaving the grid', () => {
         grid.element.querySelector('.tvguide-grid-body').dispatchEvent(new MouseEvent('mouseleave'));
 
         expect(store.getState().focus.timeMs).toBe(moved);
-    });
-});
-
-describe('condensed rows', () => {
-    /** jsdom reports zero widths, so the track width is stubbed. */
-    const withTrackWidth = (grid, px) => {
-        for (const track of grid.element.querySelectorAll('.tvguide-row-track')) {
-            Object.defineProperty(track, 'clientWidth', { value: px, configurable: true });
-        }
-    };
-
-    it('leaves a normal channel on the true time grid', () => {
-        const { store, grid } = mount();
-        withTrackWidth(grid, 1200);
-        store.dispatch({ type: Events.TICK, nowMs: NOON + 1 });
-        store.dispatch({ type: Events.PAN, deltaMs: 30 * MIN });
-
-        const row = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-track');
-        expect(row.classList.contains('is-condensed')).toBe(false);
-        expect(row.querySelector('.tvguide-block').style.left).toMatch(/%$/);
-    });
-
-    it('condenses a channel of very short scenes', () => {
-        const shorts = scenes(40, 2);
-        const { store, grid } = mount({
-            pools: { 'studio:1': { status: PoolStatus.READY, scenes: shorts, error: null } },
-            schedules: { 'studio:1': buildDaySchedule('studio:1', shorts, DAY_KEY) },
-            allChannels: [chan('studio:1', 'Alpha')]
-        });
-        withTrackWidth(grid, 600);
-        store.dispatch({ type: Events.PAN, deltaMs: 30 * MIN });
-
-        const track = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-track');
-        expect(track.classList.contains('is-condensed')).toBe(true);
-        expect(track.querySelectorAll('.tvguide-condensed-count').length).toBeGreaterThan(0);
-        expect(track.querySelectorAll('.tvguide-condensed-block').length).toBeGreaterThan(0);
-        expect(track.textContent).toMatch(/\d+ scenes/);
-    });
-
-    it('does not condense before layout, when no width is known', () => {
-        const shorts = scenes(40, 2);
-        const { grid } = mount({
-            pools: { 'studio:1': { status: PoolStatus.READY, scenes: shorts, error: null } },
-            schedules: { 'studio:1': buildDaySchedule('studio:1', shorts, DAY_KEY) },
-            allChannels: [chan('studio:1', 'Alpha')]
-        });
-        const track = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-track');
-        expect(track.classList.contains('is-condensed')).toBe(false);
     });
 });
 

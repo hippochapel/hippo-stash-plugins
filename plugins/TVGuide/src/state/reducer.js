@@ -747,7 +747,12 @@ export function reduce(state, event) {
         case Events.SET_PLAYER_MODE:
             if (event.mode === state.playerMode) return { state, effects };
             return {
-                state: { ...state, playerMode: event.mode },
+                state: {
+                    ...state,
+                    playerMode: event.mode,
+                    fullscreenReturnMode:
+                        event.mode === 'fullscreen' ? state.playerMode : state.fullscreenReturnMode
+                },
                 effects: [
                     Effects.setPlayerMode(event.mode),
                     Effects.persist(STORAGE_KEYS.playerMode, event.mode)

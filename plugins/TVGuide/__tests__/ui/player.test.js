@@ -118,6 +118,30 @@ describe('controls', () => {
         expect(store.getState().playerMode).toBe('corner');
     });
 
+    it('returns to theater when the fullscreen control closes theater fullscreen', () => {
+        const { store, player } = mount({ playerMode: 'theater' });
+
+        q(player, '.tvguide-fullscreen').click();
+        expect(store.getState().playerMode).toBe('fullscreen');
+
+        q(player, '.tvguide-fullscreen').click();
+        expect(store.getState().playerMode).toBe('theater');
+    });
+
+    it('hides the theater control before requesting native fullscreen', () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        let theaterHiddenAtRequest = false;
+        stage.requestFullscreen = jest.fn(() => {
+            theaterHiddenAtRequest = q(player, '.tvguide-theater').hidden;
+            return Promise.resolve();
+        });
+
+        player.setMode('fullscreen');
+
+        expect(theaterHiddenAtRequest).toBe(true);
+    });
+
     it('leaves Watch to the scene details', () => {
         // It used to sit here and always meant "the channel that is tuned", so
         // previewing something and pressing it opened a different scene from
@@ -250,6 +274,15 @@ describe('fullscreen fallbacks', () => {
         document.dispatchEvent(new Event('webkitfullscreenchange'));
 
         expect(store.getState().playerMode).toBe('corner');
+    });
+
+    it('restores theater when Safari exits fullscreen', () => {
+        const { store } = mount({ playerMode: 'theater' });
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'fullscreen' });
+
+        document.dispatchEvent(new Event('webkitfullscreenchange'));
+
+        expect(store.getState().playerMode).toBe('theater');
     });
 
     it('does not alter page scrolling while native fullscreen is active', () => {

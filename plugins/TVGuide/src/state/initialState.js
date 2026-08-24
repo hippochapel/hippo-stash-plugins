@@ -56,6 +56,9 @@ export function createInitialState() {
 
         // Player
         playerMode: 'corner',
+        // The normal layout to return to when the browser leaves fullscreen.
+        // This is session state, not a saved preference.
+        fullscreenReturnMode: 'corner',
         viewerPaused: false,
         // Wall-clock instant the user paused at, so the player readout can
         // freeze instead of running on with the schedule. 0 when playing.

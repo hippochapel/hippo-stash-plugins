@@ -122,10 +122,12 @@ export function createPlayer({ store, viewer }) {
         return el('button', { class: `tvguide-player-button ${className}`, type: 'button', onclick });
     }
 
-    /** Toggle a mode: pressing the button you are already in returns to corner. */
+    /** Toggle a mode; exiting fullscreen restores the normal mode it replaced. */
     function cycleMode(mode) {
-        const current = store.getState().playerMode;
-        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: current === mode ? 'corner' : mode });
+        const state = store.getState();
+        const current = state.playerMode;
+        const exitMode = mode === 'fullscreen' ? state.fullscreenReturnMode || 'corner' : 'corner';
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: current === mode ? exitMode : mode });
     }
 
     /**
@@ -203,6 +205,10 @@ export function createPlayer({ store, viewer }) {
      */
     function applyFullscreen(on) {
         if (on) {
+            // Overlay rendering is frozen during native fullscreen entry to
+            // avoid Safari collapsing it, so this control must change before
+            // the request rather than waiting for the next render.
+            theater.hidden = true;
             if (isFullscreen()) return;
             const requestGeneration = ++fullscreenRequestGeneration;
             // Rendering the fullscreen state swaps this icon. Do it before
@@ -244,6 +250,7 @@ export function createPlayer({ store, viewer }) {
         }
         fullscreenRequestGeneration += 1;
         nativeFullscreenRenderFreeze = false;
+        theater.hidden = false;
         restoreNativeFullscreenBodyLock();
         setIcon(fullscreen, 'fullscreen');
         setPseudoFullscreen(false);
@@ -266,7 +273,10 @@ export function createPlayer({ store, viewer }) {
         if (!isFullscreenActive() && store.getState().playerMode === 'fullscreen') {
             nativeFullscreenRenderFreeze = false;
             restoreNativeFullscreenBodyLock();
-            store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'corner' });
+            store.dispatch({
+                type: Events.SET_PLAYER_MODE,
+                mode: store.getState().fullscreenReturnMode || 'corner'
+            });
         }
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -298,6 +308,7 @@ export function createPlayer({ store, viewer }) {
         mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
 
         setIcon(theater, 'theater');
+        theater.hidden = state.playerMode === 'fullscreen';
         theater.setAttribute('aria-label', 'Theater mode');
         theater.setAttribute('aria-pressed', state.playerMode === 'theater' ? 'true' : 'false');
 

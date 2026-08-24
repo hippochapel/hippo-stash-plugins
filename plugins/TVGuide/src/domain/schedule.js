@@ -68,7 +68,10 @@ export function dayBucket(nowMs) {
 /** Playable runtime of a scene in ms, or 0 if it has none we can trust. */
 function durationMsOf(scene) {
     const seconds = scene && scene.files && scene.files[0] && scene.files[0].duration;
-    return typeof seconds === 'number' && seconds > 0 ? seconds * 1000 : 0;
+    // Absolute programme times are stored as JavaScript millisecond timestamps.
+    // Keep offsets on the same integer grid: fractional source seconds can
+    // otherwise produce a sub-millisecond rounding gap at a programme boundary.
+    return typeof seconds === 'number' && seconds > 0 ? Math.max(1, Math.round(seconds * 1000)) : 0;
 }
 
 /**
@@ -163,65 +166,4 @@ export function scheduleBetween(daySchedule, dayStartMs, fromMs, toMs) {
         cursor = program.endMs;
     }
     return out;
-}
-
-/**
- * Condense a row of very short programmes into something readable.
- *
- * A channel of two-minute scenes fills its row with slivers no label can fit in.
- * Rather than showing thirty unreadable boxes, the row collapses to a strip
- * around one anchor:
- *
- *     [ 12 scenes ][ prev ][ CURRENT ][ next ][ 8 scenes ]
- *
- * The segments are laid out for readability, NOT to scale -- at true scale the
- * anchor would still be two minutes wide and no better off. That is a deliberate
- * trade: condensed rows stop lining up with the clock, and the live highlight
- * rather than the now-line identifies what is on.
- *
- * @param programs  the programmes overlapping the window, in order
- * @param anchorMs  time to centre on (now if it is in the window, else the
- *                  window start)
- * @param labelled  how many programmes to name, centred on the anchor
- * @returns {Array<{kind:'count',n:number}|{kind:'program',program:object}>}
- */
-export function condenseRow(programs, anchorMs, labelled = 3) {
-    if (!Array.isArray(programs) || programs.length === 0) return [];
-
-    // Never collapse a row that already fits.
-    if (programs.length <= labelled) {
-        return programs.map((program) => ({ kind: 'program', program }));
-    }
-
-    let anchorIndex = programs.findIndex((p) => p.startMs <= anchorMs && p.endMs > anchorMs);
-    if (anchorIndex === -1) {
-        // Anchor outside the row: fall back to the nearest edge rather than
-        // dropping to an arbitrary index.
-        anchorIndex = anchorMs < programs[0].startMs ? 0 : programs.length - 1;
-    }
-
-    const half = Math.floor(labelled / 2);
-    // Keep the labelled window full even when the anchor sits at either end.
-    let from = Math.max(0, Math.min(anchorIndex - half, programs.length - labelled));
-    const to = Math.min(programs.length, from + labelled);
-    from = Math.max(0, to - labelled);
-
-    const segments = [];
-    if (from > 0) segments.push({ kind: 'count', n: from });
-    for (let i = from; i < to; i++) segments.push({ kind: 'program', program: programs[i] });
-    if (to < programs.length) segments.push({ kind: 'count', n: programs.length - to });
-
-    return segments;
-}
-
-/**
- * Should this row be condensed?
- *
- * Based on how wide the average block would actually render: a row is condensed
- * only when its blocks would be too narrow to label, which keeps normal channels
- * on the true time grid.
- */
-export function shouldCondense(programs, trackWidthPx, minLabelPx = 90) {
-    if (!Array.isArray(programs) || programs.length <= 3) return false;
-    return trackWidthPx / programs.length < minLabelPx;
 }
