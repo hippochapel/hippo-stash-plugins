@@ -180,6 +180,24 @@ export function reduce(state, event) {
             return { state: { ...state, settings: event.settings }, effects };
 
         case Events.RESTORE: {
+            // Startup restores preferences before the async lineup resolves.
+            // Keep the id until CHANNELS_LOADED can validate it against the
+            // actual, visible channels rather than discarding it too early.
+            if (state.channels.length === 0) {
+                return {
+                    state: {
+                        ...state,
+                        pendingRestoredChannelId: event.tunedChannelId || null,
+                        // Browser autoplay, especially on iPad Safari, only
+                        // starts reliably when inaudible. This is runtime
+                        // state only; the saved preference remains untouched
+                        // until the user deliberately changes it.
+                        muted: event.tunedChannelId ? true : (event.muted ?? state.muted)
+                    },
+                    effects
+                };
+            }
+
             // Only adopt a remembered channel that still exists in the lineup.
             const tunedChannelId =
                 event.tunedChannelId && state.channels.some((c) => c.id === event.tunedChannelId)
@@ -241,8 +259,18 @@ export function reduce(state, event) {
                 sourceErrors: event.errors || []
             });
 
-            next.tunedChannelId = next.tunedChannelId || next.channels[0]?.id || null;
-            if (!next.focus && next.channels.length > 0) {
+            const restoredChannelId = state.pendingRestoredChannelId;
+            const restoredChannelIsVisible = Boolean(
+                restoredChannelId && next.channels.some((channel) => channel.id === restoredChannelId)
+            );
+            next.pendingRestoredChannelId = null;
+            next.tunedChannelId = restoredChannelIsVisible
+                ? restoredChannelId
+                : (next.tunedChannelId || next.channels[0]?.id || null);
+            if (restoredChannelIsVisible) {
+                next.focus = { channelId: restoredChannelId, timeMs: state.nowMs };
+                next.guideScrollChannelId = restoredChannelId;
+            } else if (!next.focus && next.channels.length > 0) {
                 next.focus = { channelId: next.channels[0].id, timeMs: state.nowMs };
             }
             if (state.reloadScrollChannelId && event.channels.some((channel) => channel.id === state.reloadScrollChannelId)) {
@@ -250,6 +278,14 @@ export function reduce(state, event) {
                 next.reloadScrollChannelId = null;
                 next.guideScrollChannelId = state.reloadScrollChannelId;
             }
+            // Restoring a selected channel must not rely on its row becoming
+            // visible before its programming (and therefore its stream) loads.
+            // Reuse the normal request transition to retain its loading and
+            // duplicate-request protections.
+            if (next.tunedChannelId) return reduce(next, {
+                type: Events.POOL_REQUESTED,
+                channelId: next.tunedChannelId
+            });
             return { state: next, effects };
         }
 

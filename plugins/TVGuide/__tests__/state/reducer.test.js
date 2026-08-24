@@ -135,6 +135,47 @@ describe('temporary related channels', () => {
 });
 
 describe('RESTORE', () => {
+    it('selects and scrolls to a remembered channel after the lineup loads', () => {
+        const restored = run(createInitialState(), {
+            type: Events.RESTORE,
+            tunedChannelId: 'studio:2'
+        }).state;
+        const { state } = run(restored, {
+            type: Events.CHANNELS_LOADED,
+            channels: [channel('studio:1', 'One'), channel('studio:2', 'Two')]
+        });
+
+        expect(state.tunedChannelId).toBe('studio:2');
+        expect(state.focus).toEqual({ channelId: 'studio:2', timeMs: 0 });
+        expect(state.guideScrollChannelId).toBe('studio:2');
+    });
+
+    it('requests the remembered channel pool after the lineup loads', () => {
+        const restored = run(createInitialState(), {
+            type: Events.RESTORE,
+            tunedChannelId: 'studio:2'
+        }).state;
+        const { state, effects } = run(restored, {
+            type: Events.CHANNELS_LOADED,
+            channels: [channel('studio:1', 'One'), channel('studio:2', 'Two')]
+        });
+
+        expect(state.pools['studio:2'].status).toBe(PoolStatus.LOADING);
+        expect(effectTypes(effects)).toEqual(['fetchPool']);
+        expect(effects[0].channelId).toBe('studio:2');
+    });
+
+    it('starts restored autoplay muted without overwriting the saved preference', () => {
+        const { state, effects } = run(createInitialState(), {
+            type: Events.RESTORE,
+            tunedChannelId: 'studio:2',
+            muted: false
+        });
+
+        expect(state.muted).toBe(true);
+        expect(effects).toEqual([]);
+    });
+
     it('restores a remembered channel that is still in the lineup', () => {
         const { state } = run(readyState({ tunedChannelId: null }), {
             type: Events.RESTORE,
