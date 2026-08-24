@@ -193,13 +193,6 @@ body.stash-tvguide-active {
     white-space: nowrap;
 }
 
-.tvguide-banner-details {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
 .tvguide-banner-body {
     display: flex;
     flex-direction: column;
@@ -678,7 +671,6 @@ body.stash-tvguide-active {
     .tvguide-overlay button { min-height: 44px; }
     .tvguide-close { width: 44px; height: 44px; }
 
-    .tvguide-banner-details { -webkit-line-clamp: 2; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1280,6 +1272,14 @@ body.stash-tvguide-scroll-soft-lock {
     height: auto;
     flex-direction: column;
     align-items: stretch;
+}
+
+/* Hovering previews another scene in the banner. Its height must stay stable:
+   otherwise a longer description moves the guide beneath the pointer, which
+   immediately hovers a different scene and causes a reflow loop. */
+.tvguide-overlay.is-theater .tvguide-banner {
+    flex: 0 0 clamp(176px, 22vh, 260px);
+    height: clamp(176px, 22vh, 260px);
 }
 
 .tvguide-overlay.is-theater .tvguide-player {

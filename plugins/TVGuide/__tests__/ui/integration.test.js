@@ -413,6 +413,17 @@ describe('banner', () => {
         expect(banner.element.querySelector('[data-source="tag"]').textContent).toContain('Outdoor');
     });
 
+    it('keeps the details scroll position when the same scene re-renders', () => {
+        const state = baseState();
+        const banner = createBanner();
+        banner.render(state);
+
+        banner.element.querySelector('.tvguide-banner-body').scrollTop = 72;
+        banner.render({ ...state, nowMs: NOON + 1000 });
+
+        expect(banner.element.querySelector('.tvguide-banner-body').scrollTop).toBe(72);
+    });
+
     it('tunes a temporary model channel from its related chip', () => {
         const state = baseState();
         const entry = state.schedules['studio:1'].entries[0];

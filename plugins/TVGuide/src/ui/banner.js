@@ -16,6 +16,7 @@ import { openSource, sourceUrl } from './sourceLink.js';
 
 export function createBanner({ store } = {}) {
     const root = el('div', { class: 'tvguide-banner' });
+    let renderedScrollKey = null;
 
     function relatedSection(label, source, entities) {
         const unique = new Map();
@@ -104,6 +105,7 @@ export function createBanner({ store } = {}) {
             const channel = sel.focusedChannel(state);
 
             if (!program || !channel) {
+                renderedScrollKey = null;
                 replaceChildren(
                     root,
                     el('p', { class: 'tvguide-banner-empty' },
@@ -114,6 +116,9 @@ export function createBanner({ store } = {}) {
 
             const { scene } = program;
             const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
+            const scrollKey = `${channel.id}:${scene.id}`;
+            const previousBody = root.querySelector('.tvguide-banner-body');
+            const scrollTop = renderedScrollKey === scrollKey ? previousBody?.scrollTop || 0 : 0;
 
             replaceChildren(
                 root,
@@ -169,6 +174,8 @@ export function createBanner({ store } = {}) {
                         : null
                 )
             );
+            root.querySelector('.tvguide-banner-body').scrollTop = scrollTop;
+            renderedScrollKey = scrollKey;
         }
     };
 }
