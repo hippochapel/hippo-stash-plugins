@@ -596,6 +596,43 @@ describe('overlay', () => {
         expect(overlay.element.querySelector('.tvguide-player').hidden).toBe(true);
     });
 
+    it('does not re-render the guide while native fullscreen is pending', () => {
+        const state = baseState({ playerMode: 'fullscreen' });
+        const { store, overlay } = mountOverlay(state);
+        const stage = overlay.element.querySelector('.tvguide-player-stage');
+        const scrollTo = window.scrollTo;
+        window.scrollTo = jest.fn();
+        stage.requestFullscreen = jest.fn(() => new Promise(() => {}));
+        const render = jest.spyOn(overlay.player, 'render');
+
+        overlay.player.setMode('fullscreen');
+        render.mockClear();
+        overlay.render(state);
+
+        expect(render).not.toHaveBeenCalled();
+        overlay.destroy();
+        window.scrollTo = scrollTo;
+    });
+
+    it('pauses playback without mutating controls during native fullscreen', () => {
+        const state = baseState({ playerMode: 'fullscreen' });
+        const { store, overlay } = mountOverlay(state);
+        const stage = overlay.element.querySelector('.tvguide-player-stage');
+        const play = overlay.element.querySelector('.tvguide-play');
+        const scrollTo = window.scrollTo;
+        window.scrollTo = jest.fn();
+        stage.requestFullscreen = jest.fn(() => new Promise(() => {}));
+
+        overlay.player.setMode('fullscreen');
+        play.click();
+
+        expect(store.getState().viewerPaused).toBe(true);
+        expect(play.dataset.icon).toBe('pause');
+        expect(play.getAttribute('aria-label')).toBe('Pause');
+        overlay.destroy();
+        window.scrollTo = scrollTo;
+    });
+
     it('toggles the shortcut help panel', () => {
         const { overlay } = mountOverlay(baseState());
         const help = overlay.element.querySelector('.tvguide-help');

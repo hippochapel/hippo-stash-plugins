@@ -103,8 +103,10 @@ scene cap when the global one is too small for a large studio.
 
 The player carries its own controls over the video: play/pause, mute, theater,
 fullscreen and Watch. Three sizes — corner, **theater** (full width, guide
-scrolling below) and **fullscreen**. iOS Safari cannot fullscreen an arbitrary
-element, so on iPad fullscreen shows the video alone; theater is the iPad answer.
+scrolling below) and **fullscreen**. When iPad Safari rejects element
+fullscreen, TV Guide uses the same viewport-filling fallback as Gallery Mode,
+so the video and its controls remain available; theater remains the alternative
+that keeps the guide visible.
 
 Clicking a programme that is not on now **previews** it as a still and pauses
 live playback, with a Back to live control. Clicking anything currently live

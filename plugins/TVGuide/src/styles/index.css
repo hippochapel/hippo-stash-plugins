@@ -19,6 +19,7 @@
     --tvguide-row-height: 76px;
     --tvguide-head-width: 200px;
     --tvguide-player-width: 268px;
+    --tvguide-banner-art-width: 160px;
     /* Everything in the player panel that is not the 16:9 picture: the progress
        bar, the two text lines, the gaps, and the header's own padding. */
     --tvguide-player-chrome: 86px;
@@ -108,6 +109,7 @@ body.stash-tvguide-active {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+    width: var(--tvguide-banner-art-width);
     min-width: 0;
     height: 100%;
 }
@@ -118,6 +120,17 @@ body.stash-tvguide-active {
     border: none !important;
     background: none !important;
     cursor: pointer;
+}
+
+/* The studio mark belongs to the poster column, so use the same full width
+   whether the channel can open in Stash (a button) or is a plain badge. */
+.tvguide-banner-logo {
+    align-self: stretch;
+    width: 100%;
+}
+
+.tvguide-banner-logo .tvguide-logo {
+    width: 100%;
 }
 
 .tvguide-banner-body { min-width: 0; }
@@ -1082,6 +1095,45 @@ body.stash-tvguide-active {
     overflow: hidden;
 }
 
+/* Gallery Mode's fallback for Safari builds that reject element fullscreen.
+   A fixed stage preserves TV Guide's controls while still filling the viewport. */
+.tvguide-player-stage.tvguide-pseudo-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+}
+
+.tvguide-player-stage.tvguide-pseudo-fullscreen .tvguide-viewer-video {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    object-fit: contain;
+}
+
+html.stash-tvguide-scroll-lock,
+body.stash-tvguide-scroll-lock {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+}
+
+html.stash-tvguide-scroll-soft-lock,
+body.stash-tvguide-scroll-soft-lock {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-x: none;
+}
+
+body.stash-tvguide-scroll-soft-lock {
+    min-height: calc(100% + 240px);
+    padding-bottom: 240px;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
+}
+
 .tvguide-player-stage .tvguide-viewer-video {
     display: block;
     width: 100%;
@@ -1166,7 +1218,7 @@ body.stash-tvguide-active {
 
 .tvguide-banner-poster {
     flex: 0 0 auto;
-    width: 160px;
+    width: var(--tvguide-banner-art-width);
     height: 90px;
     object-fit: cover;
     border-radius: 4px;

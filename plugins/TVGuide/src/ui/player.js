@@ -6,9 +6,9 @@
  * touch, where there is no hover to reveal them with.
  *
  * Three sizes: corner, theater (full width with the guide scrolling below), and
- * fullscreen. iOS Safari cannot fullscreen an arbitrary element, so there the
- * video's own native fullscreen is used instead -- which shows the video alone,
- * without the guide. Theater is the iPad answer.
+ * fullscreen. When iPad Safari rejects element fullscreen, the stage fills the
+ * viewport with the same pseudo-fullscreen fallback Gallery Mode uses, keeping
+ * the player controls available.
  */
 
 import { el, replaceChildren } from './dom.js';
@@ -19,6 +19,12 @@ import * as sel from '../state/selectors.js';
 import { setIcon } from './icons.js';
 
 export function createPlayer({ store, viewer }) {
+    const bodyLockClass = 'stash-tvguide-active';
+    let pseudoFullscreen = false;
+    let fullscreenRequestGeneration = 0;
+    let destroyed = false;
+    let nativeFullscreenBodyLock = null;
+    let nativeFullscreenRenderFreeze = false;
     const spinner = el('div', { class: 'tvguide-spinner', 'aria-hidden': 'true' });
 
     const playPause = controlButton('tvguide-play', () =>
@@ -137,30 +143,110 @@ export function createPlayer({ store, viewer }) {
         return fullscreenElement() === stage;
     }
 
+    function isFullscreenActive() {
+        return isFullscreen() || pseudoFullscreen;
+    }
+
+    function isAppleTouchDevice() {
+        const userAgent = navigator.userAgent || '';
+        const platform = navigator.platform || '';
+        return /iP(hone|od|ad)/.test(userAgent)
+            || (platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function syncScrollLock() {
+        // Native fullscreen owns the viewport. Changing document scrolling at
+        // that transition is unnecessary and can make Safari leave fullscreen.
+        if (isFullscreen() && !pseudoFullscreen) {
+            [document.documentElement, document.body].filter(Boolean).forEach((element) => {
+                element.classList.remove('stash-tvguide-scroll-lock', 'stash-tvguide-scroll-soft-lock');
+            });
+            return;
+        }
+        const locked = isFullscreenActive();
+        const soft = locked && isAppleTouchDevice();
+        [document.documentElement, document.body].filter(Boolean).forEach((element) => {
+            element.classList.toggle('stash-tvguide-scroll-lock', locked && !soft);
+            element.classList.toggle('stash-tvguide-scroll-soft-lock', soft);
+        });
+    }
+
+    function setPseudoFullscreen(on) {
+        pseudoFullscreen = on;
+        stage.classList.toggle('tvguide-pseudo-fullscreen', on);
+        syncScrollLock();
+    }
+
+    function releaseNativeFullscreenBodyLock() {
+        if (nativeFullscreenBodyLock || !document.body) return;
+        nativeFullscreenBodyLock = {
+            active: document.body.classList.contains(bodyLockClass),
+            top: document.body.style.top
+        };
+        document.body.classList.remove(bodyLockClass);
+        document.body.style.top = '';
+    }
+
+    function restoreNativeFullscreenBodyLock() {
+        if (!nativeFullscreenBodyLock || !document.body) return;
+        document.body.classList.toggle(bodyLockClass, nativeFullscreenBodyLock.active);
+        document.body.style.top = nativeFullscreenBodyLock.top;
+        nativeFullscreenBodyLock = null;
+    }
+
     /**
-     * Element fullscreen, prefixed or not, in preference to the video's own.
+     * Element fullscreen, prefixed or not, with a pseudo-fullscreen fallback.
      *
-     * Safari only exposes `webkitRequestFullscreen` here, and taking the
-     * `webkitEnterFullscreen` branch instead was what made this unusable on
-     * iPad: native *video* fullscreen ends the moment the element's `src`
-     * changes, and the viewer reloads the stream whenever a seek fails to take
-     * -- so fullscreen dropped out a beat after it opened. Fullscreening the
-     * stage survives a stream reload, because the stage is not the thing being
-     * reloaded. The video's own fullscreen is the last resort, for iPhone,
-     * where nothing else can go fullscreen at all.
+     * Safari can reject fullscreening a div even though it exposes the API.
+     * The video's own fullscreen would hide TV Guide's controls and can end
+     * when the stream reloads, so use the fixed-viewport fallback instead.
      */
     function applyFullscreen(on) {
         if (on) {
             if (isFullscreen()) return;
+            const requestGeneration = ++fullscreenRequestGeneration;
+            // Rendering the fullscreen state swaps this icon. Do it before
+            // requesting fullscreen so Safari sees no DOM churn in its newly
+            // fullscreen subtree.
+            setIcon(fullscreen, 'exitFullscreen');
             const request = stage.requestFullscreen || stage.webkitRequestFullscreen;
             if (request) {
-                const result = request.call(stage);
-                if (result && typeof result.catch === 'function') result.catch(() => {});
-            } else if (viewer.element.webkitEnterFullscreen) {
-                viewer.element.webkitEnterFullscreen();
+                nativeFullscreenRenderFreeze = true;
+                releaseNativeFullscreenBodyLock();
+                try {
+                    const result = request.call(stage);
+                    if (result && typeof result.then === 'function') {
+                        Promise.resolve(result).then(
+                            () => {
+                                if (!destroyed && requestGeneration === fullscreenRequestGeneration) {
+                                    syncScrollLock();
+                                }
+                            },
+                            () => {
+                                if (!destroyed && requestGeneration === fullscreenRequestGeneration) {
+                                    nativeFullscreenRenderFreeze = false;
+                                    restoreNativeFullscreenBodyLock();
+                                    setPseudoFullscreen(true);
+                                }
+                            }
+                        );
+                    }
+                } catch (_) {
+                    nativeFullscreenRenderFreeze = false;
+                    restoreNativeFullscreenBodyLock();
+                    if (!destroyed && requestGeneration === fullscreenRequestGeneration) setPseudoFullscreen(true);
+                }
+            } else {
+                nativeFullscreenRenderFreeze = false;
+                setPseudoFullscreen(true);
             }
             return;
         }
+        fullscreenRequestGeneration += 1;
+        nativeFullscreenRenderFreeze = false;
+        restoreNativeFullscreenBodyLock();
+        setIcon(fullscreen, 'fullscreen');
+        setPseudoFullscreen(false);
         // Only exit what we opened -- exiting unconditionally would fight
         // anything else on the page that is fullscreen.
         if (!isFullscreen()) return;
@@ -176,7 +262,10 @@ export function createPlayer({ store, viewer }) {
     // Safari fires only the prefixed event, and the video's own fullscreen
     // fires neither -- it reports itself through `webkitendfullscreen`.
     const onFullscreenChange = () => {
-        if (!isFullscreen() && store.getState().playerMode === 'fullscreen') {
+        syncScrollLock();
+        if (!isFullscreenActive() && store.getState().playerMode === 'fullscreen') {
+            nativeFullscreenRenderFreeze = false;
+            restoreNativeFullscreenBodyLock();
             store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'corner' });
         }
     };
@@ -199,6 +288,24 @@ export function createPlayer({ store, viewer }) {
         hideTimer = setTimeout(() => root.classList.remove('is-showing-controls'), 120);
     };
 
+    function renderControls(state) {
+        setIcon(playPause, state.viewerPaused ? 'play' : 'pause');
+        playPause.setAttribute('aria-label', state.viewerPaused ? 'Play' : 'Pause');
+        playPause.setAttribute('aria-pressed', state.viewerPaused ? 'true' : 'false');
+
+        setIcon(mute, state.muted ? 'muted' : 'unmuted');
+        mute.setAttribute('aria-label', state.muted ? 'Unmute' : 'Mute');
+        mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
+
+        setIcon(theater, 'theater');
+        theater.setAttribute('aria-label', 'Theater mode');
+        theater.setAttribute('aria-pressed', state.playerMode === 'theater' ? 'true' : 'false');
+
+        setIcon(fullscreen, state.playerMode === 'fullscreen' ? 'exitFullscreen' : 'fullscreen');
+        fullscreen.setAttribute('aria-label', 'Fullscreen');
+        fullscreen.setAttribute('aria-pressed', state.playerMode === 'fullscreen' ? 'true' : 'false');
+    }
+
     stage.addEventListener('mouseenter', showControls);
     stage.addEventListener('mousemove', showControls);
     stage.addEventListener('mouseleave', hideControls);
@@ -214,7 +321,16 @@ export function createPlayer({ store, viewer }) {
             applyFullscreen(mode === 'fullscreen');
         },
 
+        isNativeFullscreenTransitionActive() {
+            return nativeFullscreenRenderFreeze && !pseudoFullscreen;
+        },
+
         destroy() {
+            destroyed = true;
+            fullscreenRequestGeneration += 1;
+            nativeFullscreenRenderFreeze = false;
+            restoreNativeFullscreenBodyLock();
+            setPseudoFullscreen(false);
             document.removeEventListener('fullscreenchange', onFullscreenChange);
             document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
             viewer.element.removeEventListener('webkitendfullscreen', onFullscreenChange);
@@ -233,21 +349,7 @@ export function createPlayer({ store, viewer }) {
 
             // SVG icons, not emoji: these inherit currentColor and size with
             // the button instead of rendering as platform artwork.
-            setIcon(playPause, state.viewerPaused ? 'play' : 'pause');
-            playPause.setAttribute('aria-label', state.viewerPaused ? 'Play' : 'Pause');
-            playPause.setAttribute('aria-pressed', state.viewerPaused ? 'true' : 'false');
-
-            setIcon(mute, state.muted ? 'muted' : 'unmuted');
-            mute.setAttribute('aria-label', state.muted ? 'Unmute' : 'Mute');
-            mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
-
-            setIcon(theater, 'theater');
-            theater.setAttribute('aria-label', 'Theater mode');
-            theater.setAttribute('aria-pressed', state.playerMode === 'theater' ? 'true' : 'false');
-
-            setIcon(fullscreen, state.playerMode === 'fullscreen' ? 'exitFullscreen' : 'fullscreen');
-            fullscreen.setAttribute('aria-label', 'Fullscreen');
-            fullscreen.setAttribute('aria-pressed', state.playerMode === 'fullscreen' ? 'true' : 'false');
+            renderControls(state);
 
 
             caption.textContent = channel

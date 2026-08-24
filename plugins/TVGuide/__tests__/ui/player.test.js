@@ -52,6 +52,7 @@ function mount(overrides = {}) {
 
     const store = createStore({ initialState });
     const player = createPlayer({ store, viewer });
+    mountedPlayers.push(player);
     document.body.appendChild(player.element);
     store.subscribe((s) => player.render(s));
     player.render(store.getState());
@@ -60,9 +61,14 @@ function mount(overrides = {}) {
 }
 
 const q = (player, sel) => player.element.querySelector(sel);
+const mountedPlayers = [];
 
 beforeEach(() => {
     document.body.innerHTML = '';
+});
+
+afterEach(() => {
+    mountedPlayers.splice(0).forEach((player) => player.destroy());
 });
 
 describe('controls', () => {
@@ -220,7 +226,7 @@ describe('fullscreen fallbacks', () => {
         expect(viewer.element.webkitEnterFullscreen).not.toHaveBeenCalled();
     });
 
-    it('falls back to the video only where nothing else can go fullscreen', () => {
+    it('uses pseudo fullscreen when the stage cannot use element fullscreen', () => {
         const { player, viewer } = mount();
         const stage = q(player, '.tvguide-player-stage');
         stage.requestFullscreen = undefined;
@@ -229,7 +235,8 @@ describe('fullscreen fallbacks', () => {
 
         player.setMode('fullscreen');
 
-        expect(viewer.element.webkitEnterFullscreen).toHaveBeenCalled();
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(true);
+        expect(viewer.element.webkitEnterFullscreen).not.toHaveBeenCalled();
     });
 
     it('follows Safari out of fullscreen, which fires only the prefixed event', () => {
@@ -243,6 +250,43 @@ describe('fullscreen fallbacks', () => {
         document.dispatchEvent(new Event('webkitfullscreenchange'));
 
         expect(store.getState().playerMode).toBe('corner');
+    });
+
+    it('does not alter page scrolling while native fullscreen is active', () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        document.body.classList.remove('stash-tvguide-scroll-lock', 'stash-tvguide-scroll-soft-lock');
+        Object.defineProperty(document, 'fullscreenElement', { value: stage, configurable: true });
+
+        document.dispatchEvent(new Event('fullscreenchange'));
+
+        expect(document.body.classList.contains('stash-tvguide-scroll-lock')).toBe(false);
+        expect(document.body.classList.contains('stash-tvguide-scroll-soft-lock')).toBe(false);
+        Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+    });
+
+    it('releases the guide body lock for native fullscreen and restores it on exit', () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        document.body.classList.add('stash-tvguide-active');
+        document.body.style.top = '-240px';
+        let activeDuringRequest;
+        let topDuringRequest;
+        stage.requestFullscreen = jest.fn(() => {
+            activeDuringRequest = document.body.classList.contains('stash-tvguide-active');
+            topDuringRequest = document.body.style.top;
+            return Promise.resolve();
+        });
+
+        player.setMode('fullscreen');
+        expect(activeDuringRequest).toBe(false);
+        expect(topDuringRequest).toBe('');
+        player.setMode('corner');
+
+        expect(document.body.classList.contains('stash-tvguide-active')).toBe(true);
+        expect(document.body.style.top).toBe('-240px');
+        document.body.classList.remove('stash-tvguide-active');
+        document.body.style.top = '';
     });
 
     it('follows the video out of its own fullscreen', () => {
@@ -281,21 +325,120 @@ describe('fullscreen fallbacks', () => {
         expect(store.getState().playerMode).toBe('corner');
     });
 
-    it('falls back to the video\'s own fullscreen on iOS', () => {
-        // iOS Safari cannot fullscreen a div -- only a video element.
+    it('uses pseudo fullscreen when the element API throws synchronously', () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => { throw new Error('denied'); });
+
+        expect(() => player.setMode('fullscreen')).not.toThrow();
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(true);
+    });
+
+    it('does not restore pseudo fullscreen if its request rejects after exit', async () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        let rejectFullscreen;
+        stage.requestFullscreen = jest.fn(() => new Promise((_, reject) => {
+            rejectFullscreen = reject;
+        }));
+
+        player.setMode('fullscreen');
+        player.setMode('corner');
+        rejectFullscreen(new Error('denied'));
+        await Promise.resolve();
+
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(false);
+    });
+
+    it('does not restore pseudo fullscreen if its request rejects after destroy', async () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        let rejectFullscreen;
+        stage.requestFullscreen = jest.fn(() => new Promise((_, reject) => {
+            rejectFullscreen = reject;
+        }));
+
+        player.setMode('fullscreen');
+        player.destroy();
+        rejectFullscreen(new Error('denied'));
+        await Promise.resolve();
+
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(false);
+        expect(document.body.classList.contains('stash-tvguide-scroll-lock')).toBe(false);
+        expect(document.body.classList.contains('stash-tvguide-scroll-soft-lock')).toBe(false);
+    });
+
+    it('uses pseudo fullscreen instead of the video\'s own iOS fullscreen', () => {
         const { player, viewer } = mount();
         q(player, '.tvguide-player-stage').requestFullscreen = undefined;
         viewer.element.webkitEnterFullscreen = jest.fn();
 
         player.setMode('fullscreen');
 
-        expect(viewer.element.webkitEnterFullscreen).toHaveBeenCalled();
+        expect(q(player, '.tvguide-player-stage').classList.contains('tvguide-pseudo-fullscreen')).toBe(true);
+        expect(viewer.element.webkitEnterFullscreen).not.toHaveBeenCalled();
     });
 
     it('survives a rejected fullscreen request', () => {
         const { player } = mount();
         q(player, '.tvguide-player-stage').requestFullscreen = jest.fn(() => Promise.reject(new Error('denied')));
         expect(() => player.setMode('fullscreen')).not.toThrow();
+    });
+
+    it('uses pseudo fullscreen when iPad Safari rejects element fullscreen', async () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => Promise.reject(new Error('denied')));
+
+        player.setMode('fullscreen');
+        await Promise.resolve();
+
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(true);
+    });
+
+    it('updates the fullscreen icon before requesting native fullscreen', () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        let iconAtRequest;
+        stage.requestFullscreen = jest.fn(() => {
+            iconAtRequest = q(player, '.tvguide-fullscreen').dataset.icon;
+            return Promise.resolve();
+        });
+
+        player.setMode('fullscreen');
+
+        expect(stage.requestFullscreen).toHaveBeenCalled();
+        expect(iconAtRequest).toBe('exitFullscreen');
+    });
+
+    it('uses element fullscreen on iPadOS', () => {
+        const userAgent = navigator.userAgent;
+        Object.defineProperty(navigator, 'userAgent', {
+            value: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)',
+            configurable: true
+        });
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => Promise.resolve());
+
+        player.setMode('fullscreen');
+
+        expect(stage.requestFullscreen).toHaveBeenCalled();
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(false);
+        player.setMode('corner');
+        Object.defineProperty(navigator, 'userAgent', { value: userAgent, configurable: true });
+    });
+
+    it('removes pseudo fullscreen when leaving fullscreen mode', async () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => Promise.reject(new Error('denied')));
+
+        player.setMode('fullscreen');
+        await Promise.resolve();
+        player.setMode('corner');
+
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(false);
     });
 
     it('exits fullscreen when leaving the mode', () => {
