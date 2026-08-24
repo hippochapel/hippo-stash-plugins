@@ -87,6 +87,29 @@ describe('entity providers', () => {
         expect(gql.mock.calls[0][1].find).toEqual({ per_page: -1, sort: 'name', direction: 'ASC' });
     });
 
+    it('requests one bounded favorite catalogue page', async () => {
+        const gql = jest.fn(async () => ({ findStudios: { count: 73, studios: [] } }));
+
+        await expect(studio.listCatalogPage({ page: 2, perPage: 50, query: 'red', favorited: true }, gql))
+            .resolves.toEqual({ channels: [], total: 73 });
+
+        expect(gql.mock.calls[0][1]).toEqual({
+            f: { favorite: true },
+            find: { page: 2, per_page: 50, q: 'red', sort: 'name', direction: 'ASC' }
+        });
+        expect(gql.mock.calls[0][0]).toContain('findStudios');
+    });
+
+    it('orders a catalogue page by scene count on the server', async () => {
+        const gql = jest.fn(async () => ({ findStudios: { count: 0, studios: [] } }));
+
+        await studio.listCatalogPage({ page: 1, perPage: 50, sort: 'sceneCount' }, gql);
+
+        expect(gql.mock.calls[0][1].find).toEqual({
+            page: 1, per_page: 50, sort: 'scenes_count', direction: 'DESC'
+        });
+    });
+
     it('falls back to a monogram when Stash returns its placeholder image', async () => {
         const gql = studioRows([
             { id: '1', name: 'No Art', image_path: '/studio/1/image?default=true', scene_count: 9 }
@@ -152,6 +175,22 @@ describe('performer provider (Models)', () => {
         expect(gql.mock.calls[0][1].f).toEqual({
             scene_count: { value: 9, modifier: 'GREATER_THAN' }
         });
+    });
+
+    it('filters a bounded model catalogue by gender and favorites', async () => {
+        const gql = jest.fn(rows([]));
+
+        await performer.listCatalogPage(
+            { page: 1, perPage: 50, query: '', favorited: true, gender: 'female' },
+            gql
+        );
+
+        expect(gql.mock.calls[0][1]).toEqual({
+            f: { filter_favorites: true, gender: { value: 'FEMALE', modifier: 'EQUALS' } },
+            find: { page: 1, per_page: 50, sort: 'name', direction: 'ASC' }
+        });
+        expect(performer.capabilities).toEqual({ favorite: true, gender: true });
+        expect(group.capabilities).toEqual({ favorite: false, gender: false });
     });
 });
 

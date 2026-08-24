@@ -12,5 +12,7 @@ export default createEntityProvider({
     collectionField: 'performers',
     logoField: 'image_path',
     sceneFilterKey: 'performers',
+    favoriteFilterKey: 'filter_favorites',
+    supportsGender: true,
     hierarchical: false
 });

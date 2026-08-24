@@ -44,6 +44,13 @@ export const Events = {
     MANAGER_CLOSE: 'MANAGER_CLOSE',
     MANAGER_SEARCH: 'MANAGER_SEARCH',
     SET_MANAGER_SOURCE: 'SET_MANAGER_SOURCE',
+    SET_MANAGER_CATALOG_FAVORITED: 'SET_MANAGER_CATALOG_FAVORITED',
+    SET_MANAGER_CATALOG_GENDER: 'SET_MANAGER_CATALOG_GENDER',
+    LOAD_MANAGER_CATALOG_PAGE: 'LOAD_MANAGER_CATALOG_PAGE',
+    CATALOG_PAGE_LOADED: 'CATALOG_PAGE_LOADED',
+    CATALOG_PAGE_FAILED: 'CATALOG_PAGE_FAILED',
+    MANAGER_CHANNEL_INCLUDED: 'MANAGER_CHANNEL_INCLUDED',
+    MANAGER_CHANNEL_REMOVED: 'MANAGER_CHANNEL_REMOVED',
     CATALOG_LOADED: 'CATALOG_LOADED',
     CATALOG_FAILED: 'CATALOG_FAILED',
 
@@ -69,6 +76,9 @@ export const Effects = {
         poolCap
     }),
     loadCatalog: (source) => ({ type: 'loadCatalog', source }),
+    loadCatalogPage: (source, requestKey, page, perPage, query, favorited, gender, sort) => ({
+        type: 'loadCatalogPage', source, requestKey, page, perPage, query, favorited, gender, sort
+    }),
     setPlayerMode: (mode) => ({ type: 'setPlayerMode', mode }),
     setPaused: (paused) => ({ type: 'setPaused', paused }),
     reloadChannels: () => ({ type: 'loadChannels' }),

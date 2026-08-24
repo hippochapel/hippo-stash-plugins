@@ -22,11 +22,39 @@ import {
 } from '../domain/channelPrefs.js';
 import { relatedChannel } from '../domain/relatedChannel.js';
 import { parseChannelId } from '../domain/lineup.js';
+import { CATALOG_PAGE_SIZE, catalogCapabilities, catalogRequestKey } from './selectors.js';
 
 /** How far ahead of the current day panning is allowed to go. */
 const MAX_PAN_AHEAD_MS = 24 * 3600000;
 
 const windowMsOf = (state) => state.settings.guide_window_hours * 3600000;
+
+function catalogLoadEffect(state, page = 1) {
+    const source = state.managerSource;
+    const capabilities = catalogCapabilities(source);
+    return Effects.loadCatalogPage(
+        source,
+        catalogRequestKey(state),
+        page,
+        CATALOG_PAGE_SIZE,
+        state.managerSearch.trim(),
+        capabilities.favorite && state.managerCatalogFavorited,
+        capabilities.gender ? state.managerCatalogGender : 'all',
+        state.managerSort
+    );
+}
+
+function requestCatalogPage(state, page = 1) {
+    const requestKey = catalogRequestKey(state);
+    const entry = state.catalogRequests[requestKey] || {
+        channels: [], total: 0, loadedPages: [], loadingPage: null, error: null
+    };
+    if (entry.loadedPages.includes(page) || entry.loadingPage === page) return { state, effects: [] };
+    return {
+        state: { ...state, catalogRequests: { ...state.catalogRequests, [requestKey]: { ...entry, loadingPage: page, error: null } } },
+        effects: [catalogLoadEffect(state, page)]
+    };
+}
 
 /**
  * Recompute the visible channel list after anything that affects it.
@@ -551,9 +579,11 @@ export function reduce(state, event) {
         // else, so it deliberately does not recompute the visible channels.
         case Events.SET_MANAGER_SORT:
             if (event.sort === state.managerSort) return { state, effects };
+            const next = { ...state, managerSort: event.sort };
+            const requested = state.managerOpen ? requestCatalogPage(next, 1) : { state: next, effects: [] };
             return {
-                state: { ...state, managerSort: event.sort },
-                effects: [Effects.persist(STORAGE_KEYS.sort, event.sort)]
+                state: requested.state,
+                effects: [Effects.persist(STORAGE_KEYS.sort, event.sort), ...requested.effects]
             };
 
         case Events.SET_LINEUP:
@@ -571,31 +601,87 @@ export function reduce(state, event) {
             const next = { ...state, managerOpen: true };
             const source = event.source || state.managerSource;
             next.managerSource = source;
-
-            // One source at a time, fetched the first time it is opened: the
-            // whole catalogue is many thousands of rows on a large library.
-            if (!state.catalogStatus[source]) {
-                next.catalogStatus = { ...state.catalogStatus, [source]: PoolStatus.LOADING };
-                effects.push(Effects.loadCatalog(source));
-            }
-            return { state: next, effects };
+            return requestCatalogPage(next, 1);
         }
 
         case Events.SET_MANAGER_SOURCE: {
             if (event.source === state.managerSource) return { state, effects };
-            const next = { ...state, managerSource: event.source };
-            if (!state.catalogStatus[event.source]) {
-                next.catalogStatus = { ...state.catalogStatus, [event.source]: PoolStatus.LOADING };
-                effects.push(Effects.loadCatalog(event.source));
-            }
-            return { state: next, effects };
+            return requestCatalogPage({ ...state, managerSource: event.source }, 1);
         }
 
         case Events.MANAGER_CLOSE:
             return { state: { ...state, managerOpen: false }, effects };
 
         case Events.MANAGER_SEARCH:
-            return { state: { ...state, managerSearch: event.query }, effects };
+            if (event.query === state.managerSearch) return { state, effects };
+            return requestCatalogPage({ ...state, managerSearch: event.query }, 1);
+
+        case Events.SET_MANAGER_CATALOG_FAVORITED:
+            if (Boolean(event.favorited) === state.managerCatalogFavorited) return { state, effects };
+            return requestCatalogPage({ ...state, managerCatalogFavorited: Boolean(event.favorited) }, 1);
+
+        case Events.SET_MANAGER_CATALOG_GENDER: {
+            const gender = ['male', 'female'].includes(event.gender) ? event.gender : 'all';
+            if (gender === state.managerCatalogGender) return { state, effects };
+            return requestCatalogPage({ ...state, managerCatalogGender: gender }, 1);
+        }
+
+        case Events.LOAD_MANAGER_CATALOG_PAGE:
+            return requestCatalogPage(state, event.page);
+
+        case Events.CATALOG_PAGE_LOADED: {
+            if (event.requestKey !== catalogRequestKey(state)) return { state, effects };
+            const current = state.catalogRequests[event.requestKey];
+            if (!current || current.loadingPage !== event.page) return { state, effects };
+            const channels = event.page === 1 ? event.channels : [...current.channels, ...event.channels];
+            return {
+                state: {
+                    ...state,
+                    catalogRequests: {
+                        ...state.catalogRequests,
+                        [event.requestKey]: {
+                            ...current, channels, total: event.total,
+                            loadedPages: [...current.loadedPages, event.page], loadingPage: null, error: null
+                        }
+                    }
+                },
+                effects
+            };
+        }
+
+        case Events.CATALOG_PAGE_FAILED: {
+            if (event.requestKey !== catalogRequestKey(state)) return { state, effects };
+            const current = state.catalogRequests[event.requestKey];
+            if (!current || current.loadingPage !== event.page) return { state, effects };
+            return {
+                state: { ...state, catalogRequests: { ...state.catalogRequests, [event.requestKey]: { ...current, loadingPage: null, error: event.message } } },
+                effects
+            };
+        }
+
+        case Events.MANAGER_CHANNEL_INCLUDED: {
+            const alreadyIncluded = state.allChannels.some((channel) => channel.id === event.channel.id);
+            const allChannels = alreadyIncluded
+                ? state.allChannels : [...state.allChannels, event.channel];
+            const next = withVisibleChannels({ ...state, lineup: event.lineup, allChannels });
+            return {
+                state: next,
+                effects: [
+                    Effects.persist(STORAGE_KEYS.lineup, JSON.stringify(event.lineup)),
+                    ...(!alreadyIncluded ? [Effects.fetchPool(event.channel.id, event.channel.sceneFilter, poolCapFor(next.prefs, event.channel.id, next.settings.guide_pool_cap))] : [])
+                ]
+            };
+        }
+
+        case Events.MANAGER_CHANNEL_REMOVED: {
+            const { [event.channel.id]: _pool, ...pools } = state.pools;
+            const { [event.channel.id]: _schedule, ...schedules } = state.schedules;
+            const next = withVisibleChannels({
+                ...state, lineup: event.lineup,
+                allChannels: state.allChannels.filter((channel) => channel.id !== event.channel.id), pools, schedules
+            });
+            return { state: next, effects: [Effects.persist(STORAGE_KEYS.lineup, JSON.stringify(event.lineup))] };
+        }
 
         case Events.CATALOG_LOADED: {
             const source = event.source || state.managerSource;

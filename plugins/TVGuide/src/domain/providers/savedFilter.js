@@ -26,6 +26,7 @@ const QUERY = `query TVGuideSavedFilters {
 export default {
     source: 'savedFilter',
     query: QUERY,
+    capabilities: { favorite: false, gender: false },
 
     async listChannels(entry, gql) {
         const data = await gql(QUERY);
@@ -49,5 +50,15 @@ export default {
                 sceneCount: null, // not knowable without running the filter
                 sceneFilter: savedFilterToSceneFilter(f.object_filter)
             }));
+    },
+
+    async listCatalogPage({ page = 1, perPage = 50, query = '' }, gql) {
+        const channels = await this.listChannels({ source: 'savedFilter' }, gql);
+        const normalized = query.trim().toLowerCase();
+        const filtered = normalized
+            ? channels.filter((channel) => channel.name.toLowerCase().includes(normalized))
+            : channels;
+        const start = (page - 1) * perPage;
+        return { channels: filtered.slice(start, start + perPage), total: filtered.length };
     }
 };

@@ -11,5 +11,6 @@ export default createEntityProvider({
     filterType: 'TagFilterType',
     collectionField: 'tags',
     logoField: 'image_path',
-    sceneFilterKey: 'tags'
+    sceneFilterKey: 'tags',
+    favoriteFilterKey: 'favorite'
 });

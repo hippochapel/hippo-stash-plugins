@@ -193,6 +193,30 @@ export const catalogStatus = (state, source = state.managerSource) =>
 export const catalogError = (state, source = state.managerSource) =>
     state.catalogError[source] || null;
 
+export const CATALOG_PAGE_SIZE = 50;
+
+export function catalogCapabilities(source) {
+    return {
+        performer: { favorite: true, gender: true },
+        studio: { favorite: true, gender: false },
+        tag: { favorite: true, gender: false }
+    }[source] || { favorite: false, gender: false };
+}
+
+export function catalogRequestKey(state, source = state.managerSource) {
+    const capabilities = catalogCapabilities(source);
+    const query = state.managerSearch.trim().toLowerCase();
+    const favorited = capabilities.favorite && state.managerCatalogFavorited ? '1' : '0';
+    const gender = capabilities.gender ? state.managerCatalogGender : 'all';
+    return `${source}|${query}|${favorited}|${gender}|${state.managerSort}`;
+}
+
+export function catalogPage(state, source = state.managerSource) {
+    return state.catalogRequests?.[catalogRequestKey(state, source)] || {
+        channels: [], total: 0, loadedPages: [], loadingPage: null, error: null
+    };
+}
+
 /** The rule entry for a source, if the lineup has one. */
 export function lineupRule(state, source) {
     return state.lineup.find((entry) => entry.source === source && !entry.ids && !entry.names) || null;
@@ -206,14 +230,17 @@ export function lineupRule(state, source) {
  * slower and no more accurate.
  */
 export function catalogRows(state, source = state.managerSource) {
-    const rows = state.catalog?.[source] || [];
+    const paged = catalogPage(state, source);
+    const isPaged = paged.loadedPages.length > 0;
+    const rows = isPaged ? paged.channels : (state.catalog?.[source] || []);
     const query = state.managerSearch.trim().toLowerCase();
-    const filtered = query ? rows.filter((c) => c.name.toLowerCase().includes(query)) : rows;
+    const filtered = !isPaged && query ? rows.filter((channel) => channel.name.toLowerCase().includes(query)) : rows;
 
-    // The sort control belongs to this dialog: it orders these rows and nothing
-    // in the guide behind it.
+    // Paged entity catalogues arrive in server order. Sorting a partial page
+    // locally would make a high-count item on a later page look incorrectly
+    // ranked, so only the legacy in-memory path is sorted here.
     const compare = COMPARATORS[state.managerSort] || COMPARATORS[DEFAULT_SORT];
-    const sorted = filtered.slice().sort(compare);
+    const sorted = isPaged ? filtered : filtered.slice().sort(compare);
 
     const live = new Set(state.allChannels.map((c) => c.id));
 

@@ -801,6 +801,14 @@ describe('channel manager', () => {
             expect(effects).toContainEqual({ type: 'persist', key: STORAGE_KEYS.sort, value: 'sceneCount' });
         });
 
+        it('reloads the manager catalogue in the selected server order', () => {
+            const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
+            const { effects } = run(open, { type: Events.SET_MANAGER_SORT, sort: 'sceneCount' });
+            expect(effects).toContainEqual(expect.objectContaining({
+                type: 'loadCatalogPage', sort: 'sceneCount', page: 1
+            }));
+        });
+
         it('ignores a change to the sort already in use', () => {
             const state = managerState();
             expect(run(state, { type: Events.SET_MANAGER_SORT, sort: 'name' }).state).toBe(state);
@@ -822,8 +830,8 @@ describe('channel manager', () => {
         it('fetches the catalogue the first time it opens', () => {
             const { state, effects } = run(managerState(), { type: Events.MANAGER_OPEN });
             expect(state.managerOpen).toBe(true);
-            expect(effectTypes(effects)).toEqual(['loadCatalog']);
-            expect(state.catalogStatus.studio).toBe(PoolStatus.LOADING);
+            expect(effectTypes(effects)).toEqual(['loadCatalogPage']);
+            expect(effects[0]).toEqual(expect.objectContaining({ source: 'studio', page: 1, perPage: 50 }));
         });
 
         it('fetches only the source being browsed, not the whole catalogue', () => {
@@ -836,27 +844,30 @@ describe('channel manager', () => {
             const { state, effects } = run(open, { type: Events.SET_MANAGER_SOURCE, source: 'tag' });
 
             expect(state.managerSource).toBe('tag');
-            expect(effects).toEqual([{ type: 'loadCatalog', source: 'tag' }]);
+            expect(effects).toEqual([expect.objectContaining({ type: 'loadCatalogPage', source: 'tag', page: 1 })]);
         });
 
         it('does not refetch a source it already has', () => {
             const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
-            const loaded = run(open, {
-                type: Events.CATALOG_LOADED,
-                source: 'tag',
-                catalog: { tag: [] }
+            const switched = run(open, { type: Events.SET_MANAGER_SOURCE, source: 'tag' });
+            const loaded = run(switched.state, {
+                type: Events.CATALOG_PAGE_LOADED,
+                requestKey: switched.effects[0].requestKey,
+                page: 1,
+                channels: [],
+                total: 0
             }).state;
-            const selected = run(loaded, { type: Events.SET_MANAGER_SOURCE, source: 'tag' }).state;
-
-            expect(run(selected, { type: Events.SET_MANAGER_SOURCE, source: 'tag' }).effects).toEqual([]);
+            expect(run(loaded, { type: Events.SET_MANAGER_SOURCE, source: 'tag' }).effects).toEqual([]);
         });
 
         it('does not refetch the catalogue on a later open', () => {
             const open = run(managerState(), { type: Events.MANAGER_OPEN }).state;
             const loaded = run(open, {
-                type: Events.CATALOG_LOADED,
-                source: 'studio',
-                catalog: { studio: [] }
+                type: Events.CATALOG_PAGE_LOADED,
+                requestKey: 'studio||0|all',
+                page: 1,
+                channels: [],
+                total: 0
             }).state;
             const closed = run(loaded, { type: Events.MANAGER_CLOSE }).state;
             expect(run(closed, { type: Events.MANAGER_OPEN }).effects).toEqual([]);
@@ -868,8 +879,34 @@ describe('channel manager', () => {
         });
 
         it('records the search query', () => {
-            const { state } = run(managerState(), { type: Events.MANAGER_SEARCH, query: 'als' });
+            const { state, effects } = run(managerState(), { type: Events.MANAGER_SEARCH, query: 'als' });
             expect(state.managerSearch).toBe('als');
+            expect(effectTypes(effects)).toEqual(['loadCatalogPage']);
+        });
+
+        it('keeps stale page results out of a newer search', () => {
+            const first = run(managerState(), { type: Events.MANAGER_OPEN });
+            const searched = run(first.state, { type: Events.MANAGER_SEARCH, query: 'new' });
+            const { state } = run(searched.state, {
+                type: Events.CATALOG_PAGE_LOADED,
+                requestKey: first.effects[0].requestKey,
+                page: 1,
+                channels: [channel('studio:old', 'Old')],
+                total: 1
+            });
+            expect(state.catalogRequests[searched.effects[0].requestKey].channels).toEqual([]);
+        });
+
+        it('adds one channel immediately and fetches only its pool', () => {
+            const state = managerState({ pools: {}, schedules: {} });
+            const added = channel('studio:9', 'Nine');
+            const { state: next, effects } = run(state, {
+                type: Events.MANAGER_CHANNEL_INCLUDED,
+                channel: added,
+                lineup: [{ source: 'studio', ids: ['1', '2', '9'] }]
+            });
+            expect(next.allChannels).toContainEqual(added);
+            expect(effectTypes(effects)).toEqual(['persist', 'fetchPool']);
         });
 
         it('stores a loaded catalogue', () => {

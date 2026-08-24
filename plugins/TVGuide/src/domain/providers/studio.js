@@ -8,5 +8,6 @@ export default createEntityProvider({
     filterType: 'StudioFilterType',
     collectionField: 'studios',
     logoField: 'image_path',
-    sceneFilterKey: 'studios'
+    sceneFilterKey: 'studios',
+    favoriteFilterKey: 'favorite'
 });

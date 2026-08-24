@@ -6,7 +6,7 @@
  */
 
 import { Events } from './actions.js';
-import { resolveLineup, fetchCatalog } from '../domain/providers/index.js';
+import { resolveLineup, fetchCatalog, fetchCatalogPage } from '../domain/providers/index.js';
 import { fetchScenePool } from '../api/scenes.js';
 
 /** Concurrent pool fetches. Enough to fill a screen, few enough not to
@@ -25,6 +25,7 @@ export function createEffectRunner({
     // Injected like every other dependency here, so the failure path is
     // reachable from a test rather than being untestable defensive code.
     fetchCatalogFn = fetchCatalog,
+    fetchCatalogPageFn = fetchCatalogPage,
     maxConcurrent = MAX_CONCURRENT_POOL_FETCHES
 }) {
     let inFlight = 0;
@@ -103,6 +104,28 @@ export function createEffectRunner({
                                 source: effect.source,
                                 message: error.message
                             })
+                    );
+                return;
+
+            case 'loadCatalogPage':
+                Promise.resolve()
+                    .then(() => fetchCatalogPageFn(gql, effect.source, effect))
+                    .then(
+                        ({ channels, total }) => dispatch({
+                            type: Events.CATALOG_PAGE_LOADED,
+                            source: effect.source,
+                            requestKey: effect.requestKey,
+                            page: effect.page,
+                            channels,
+                            total
+                        }),
+                        (error) => dispatch({
+                            type: Events.CATALOG_PAGE_FAILED,
+                            source: effect.source,
+                            requestKey: effect.requestKey,
+                            page: effect.page,
+                            message: error.message
+                        })
                     );
                 return;
 

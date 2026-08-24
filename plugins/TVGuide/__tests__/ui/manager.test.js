@@ -117,6 +117,20 @@ describe('presentation', () => {
         expect(rowFor(manager, 'savedFilter:1').textContent).toContain('saved filter');
     });
 
+    it('links a channel name to its Stash detail page in a new tab', () => {
+        const { manager } = mount();
+        const link = rowFor(manager, 'studio:1').querySelector('.tvguide-manager-row-name');
+        expect(link.tagName).toBe('A');
+        expect(link.getAttribute('href')).toBe('/studios/1');
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener');
+    });
+
+    it('keeps saved-filter names as text because Stash has no detail page for them', () => {
+        const { manager } = mount({ managerSource: 'savedFilter' });
+        expect(rowFor(manager, 'savedFilter:1').querySelector('.tvguide-manager-row-name').tagName).toBe('SPAN');
+    });
+
     it('reports how many channels are in the guide', () => {
         const { manager } = mount();
         expect(manager.element.querySelector('.tvguide-manager-status').textContent)
@@ -147,6 +161,17 @@ describe('search', () => {
         expect(rowFor(manager, 'studio:1')).toBeNull();
     });
 
+    it('does not discard typed text when the guide clock re-renders before debounce', () => {
+        const { store, manager } = mount();
+        const input = manager.element.querySelector('.tvguide-manager-search');
+        input.value = 'br';
+        input.dispatchEvent(new Event('input'));
+
+        store.dispatch({ type: Events.TICK, nowMs: NOON + 1000 });
+
+        expect(input.value).toBe('br');
+    });
+
     it('is case-insensitive', () => {
         const { store, manager } = mount();
         store.dispatch({ type: Events.MANAGER_SEARCH, query: 'ALPHA' });
@@ -156,7 +181,30 @@ describe('search', () => {
     it('says so when nothing matches', () => {
         const { store, manager } = mount();
         store.dispatch({ type: Events.MANAGER_SEARCH, query: 'zzzz' });
+        const requestKey = 'studio|zzzz|0|all|name';
+        store.dispatch({
+            type: Events.CATALOG_PAGE_LOADED,
+            requestKey,
+            page: 1,
+            channels: [],
+            total: 0
+        });
         expect(manager.element.textContent).toContain('Nothing matches');
+    });
+});
+
+describe('catalogue filters', () => {
+    it('shows Favorites for sources that support it', () => {
+        const { manager } = mount();
+        expect(manager.element.querySelector('.tvguide-manager-favorited').hidden).toBe(false);
+        expect(manager.element.querySelector('.tvguide-manager-gender').hidden).toBe(true);
+    });
+
+    it('shows gender only for Models', () => {
+        const { store, manager } = mount();
+        store.dispatch({ type: Events.SET_MANAGER_SOURCE, source: 'performer' });
+        expect(manager.element.querySelector('.tvguide-manager-favorited').hidden).toBe(false);
+        expect(manager.element.querySelector('.tvguide-manager-gender').hidden).toBe(false);
     });
 });
 
@@ -267,6 +315,23 @@ describe('adding and removing channels', () => {
         expect(entry.ids).toContain('3');
     });
 
+    it('marks an added channel active without waiting for a lineup reload', () => {
+        const { manager } = mount();
+        buttonLabelled(rowFor(manager, 'studio:3'), /Add to guide/).click();
+
+        expect(rowFor(manager, 'studio:3').classList.contains('is-included')).toBe(true);
+        expect(buttonLabelled(rowFor(manager, 'studio:3'), /Remove from guide/)).not.toBeUndefined();
+    });
+
+    it('shows only Add for a channel that is not in the guide', () => {
+        const { manager } = mount();
+        const row = rowFor(manager, 'studio:3');
+
+        expect(buttonLabelled(row, /Add to guide/)).not.toBeUndefined();
+        expect(buttonLabelled(row, /Pin Tiny|Hide Tiny/)).toBeUndefined();
+        expect(row.querySelector('.tvguide-manager-edit')).toBeNull();
+    });
+
     it('adds a channel from another source entirely', () => {
         const { store, manager } = mount({ managerSource: 'tag' });
         buttonLabelled(rowFor(manager, 'tag:9'), /Add to guide/).click();
@@ -316,11 +381,11 @@ describe('pinning and hiding', () => {
         expect(rowFor(manager, 'studio:2').classList.contains('is-hidden')).toBe(true);
     });
 
-    it('cannot pin or hide a channel that is not in the guide', () => {
+    it('does not show pin or hide controls until a channel is in the guide', () => {
         const { manager } = mount();
         const row = rowFor(manager, 'studio:3');
-        expect(buttonLabelled(row, /Pin Tiny/).disabled).toBe(true);
-        expect(buttonLabelled(row, /Hide Tiny/).disabled).toBe(true);
+        expect(buttonLabelled(row, /Pin Tiny/)).toBeUndefined();
+        expect(buttonLabelled(row, /Hide Tiny/)).toBeUndefined();
     });
 
     it('marks toggle state for assistive tech', () => {

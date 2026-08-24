@@ -282,6 +282,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         player,
 
         destroy() {
+            manager.destroy();
             grid.destroy();
             list.destroy();
             player.destroy();

@@ -96,3 +96,11 @@ export async function fetchCatalog(gql, sources = Object.keys(PROVIDERS)) {
 
     return { catalog, errors };
 }
+
+export async function fetchCatalogPage(gql, source, request) {
+    const provider = PROVIDERS[source];
+    if (!provider || typeof provider.listCatalogPage !== 'function') {
+        return { channels: [], total: 0 };
+    }
+    return provider.listCatalogPage(request, gql);
+}

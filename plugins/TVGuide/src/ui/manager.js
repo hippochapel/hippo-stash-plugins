@@ -20,6 +20,7 @@ import { SORT_MODES } from '../domain/channelPrefs.js';
 import { KNOWN_SOURCES, SOURCE_LABELS } from '../domain/lineup.js';
 import * as sel from '../state/selectors.js';
 import { logoBadge } from './logoBadge.js';
+import { sourceUrl } from './sourceLink.js';
 
 const SORT_LABELS = {
     name: 'Name',
@@ -38,7 +39,7 @@ export function createManager({ store }) {
         id: 'tvguide-manager-search',
         class: 'tvguide-manager-search',
         placeholder: 'Filter channels…',
-        oninput: (e) => store.dispatch({ type: Events.MANAGER_SEARCH, query: e.target.value })
+        oninput: (e) => scheduleSearch(e.target.value)
     });
 
     const sortSelect = el(
@@ -60,6 +61,14 @@ export function createManager({ store }) {
         },
         KNOWN_SOURCES.map((source) => el('option', { value: source }, SOURCE_LABELS[source]))
     );
+    const favorited = el('label', { class: 'tvguide-manager-favorited', hidden: true },
+        el('input', { type: 'checkbox', onchange: (e) => store.dispatch({ type: Events.SET_MANAGER_CATALOG_FAVORITED, favorited: e.target.checked }) }),
+        ' Favorited'
+    );
+    const gender = el('select', {
+        class: 'tvguide-manager-gender', hidden: true,
+        onchange: (e) => store.dispatch({ type: Events.SET_MANAGER_CATALOG_GENDER, gender: e.target.value })
+    }, el('option', { value: 'all' }, 'All genders'), el('option', { value: 'female' }, 'Female'), el('option', { value: 'male' }, 'Male'));
 
     const sections = el('div', { class: 'tvguide-manager-sections' });
     const status = el('p', { class: 'tvguide-manager-status' });
@@ -83,6 +92,8 @@ export function createManager({ store }) {
                 sourceSelect,
                 el('label', { for: 'tvguide-manager-search', class: 'tvguide-sr-only' }, 'Filter channels'),
                 search,
+                favorited,
+                gender,
                 el('label', { for: 'tvguide-manager-sort' }, 'Sort'),
                 sortSelect
             ),
@@ -102,13 +113,35 @@ export function createManager({ store }) {
     // the store would mean a re-render on every keystroke.
     const editing = new Set();
     let renderedSignature = '';
+    let searchTimer = null;
+    let pendingSearch = null;
+
+    // Searching is remote and paged. A brief pause prevents one request per
+    // keypress while keeping the result responsive.
+    function scheduleSearch(query) {
+        clearTimeout(searchTimer);
+        pendingSearch = query;
+        searchTimer = setTimeout(() => {
+            searchTimer = null;
+            store.dispatch({ type: Events.MANAGER_SEARCH, query });
+            pendingSearch = null;
+        }, 200);
+    }
 
     function render(state) {
         root.hidden = !state.managerOpen;
         if (!state.managerOpen) return;
 
         if (sortSelect.value !== state.managerSort) sortSelect.value = state.managerSort;
-        if (search.value !== state.managerSearch) search.value = state.managerSearch;
+        // The overlay clock re-renders every second. Until the debounced query
+        // reaches state, the input is its own source of truth so a clock tick
+        // cannot write the older store value over what the user is typing.
+        if (pendingSearch === null && search.value !== state.managerSearch) search.value = state.managerSearch;
+        const capabilities = sel.catalogCapabilities(state.managerSource);
+        favorited.hidden = !capabilities.favorite;
+        favorited.firstChild.checked = state.managerCatalogFavorited;
+        gender.hidden = !capabilities.gender;
+        if (gender.value !== state.managerCatalogGender) gender.value = state.managerCatalogGender;
 
         renderStatus(state);
 
@@ -118,8 +151,8 @@ export function createManager({ store }) {
             state.managerSource,
             // Per-source now, so read it through the selector -- the raw value
             // is an object and would stringify identically every time.
-            sel.catalogStatus(state),
-            (state.catalog[state.managerSource] || []).length,
+            sel.catalogRequestKey(state),
+            JSON.stringify(sel.catalogPage(state)),
             state.managerSearch,
             state.managerSort,
             JSON.stringify(state.lineup),
@@ -146,13 +179,14 @@ export function createManager({ store }) {
         render(store.getState());
     }
 
-    return { element: root, render };
+    return { element: root, render, destroy: () => clearTimeout(searchTimer) };
 
     function renderStatus(state) {
-        if (sel.catalogStatus(state) === PoolStatus.LOADING) {
+        const page = sel.catalogPage(state);
+        if ((page.loadingPage && page.channels.length === 0) || (!page.loadedPages.length && sel.catalogStatus(state) === PoolStatus.LOADING)) {
             status.textContent = 'Loading available channels…';
-        } else if (sel.catalogError(state)) {
-            status.textContent = `Could not load channels: ${sel.catalogError(state)}`;
+        } else if (page.error || (!page.loadedPages.length && sel.catalogError(state))) {
+            status.textContent = `Could not load channels: ${page.error || sel.catalogError(state)}`;
         } else {
             // Counted from the groups, so collapsing one does not read as
             // channels having left the guide.
@@ -180,9 +214,18 @@ export function createManager({ store }) {
             ),
             rows.length === 0
                 ? el('p', { class: 'tvguide-manager-empty' },
-                      sel.catalogStatus(state) === PoolStatus.READY ? 'Nothing matches.' : '…')
-                : el('ul', { class: 'tvguide-manager-list' }, rows.map((row) => renderRow(state, source, row)))
+                      sel.catalogPage(state).loadingPage ? '…' : 'Nothing matches.')
+                : el('ul', { class: 'tvguide-manager-list' }, rows.map((row) => renderRow(state, source, row))),
+            catalogFooter(state)
         );
+    }
+
+    function catalogFooter(state) {
+        const page = sel.catalogPage(state);
+        const nextPage = page.loadedPages.length + 1;
+        if (page.error) return el('button', { class: 'tvguide-manager-load-more', type: 'button', text: 'Retry', onclick: () => store.dispatch({ type: Events.LOAD_MANAGER_CATALOG_PAGE, page: nextPage }) });
+        if (page.channels.length >= page.total) return null;
+        return el('button', { class: 'tvguide-manager-load-more', type: 'button', disabled: Boolean(page.loadingPage), text: page.loadingPage ? 'Loading…' : `Load more (${page.channels.length}/${page.total})`, onclick: () => store.dispatch({ type: Events.LOAD_MANAGER_CATALOG_PAGE, page: nextPage }) });
     }
 
     /**
@@ -312,6 +355,8 @@ export function createManager({ store }) {
     function renderRow(state, source, row) {
         const { channel, included, pinned, hidden, pref } = row;
         const isEditing = editing.has(channel.id);
+        const displayName = pref?.name || channel.name;
+        const detailUrl = sourceUrl(channel);
 
         return el(
             'li',
@@ -334,7 +379,13 @@ export function createManager({ store }) {
                 el(
                     'div',
                     { class: 'tvguide-manager-row-text' },
-                    el('span', { class: 'tvguide-manager-row-name' }, pref?.name || channel.name),
+                    detailUrl
+                        ? el('a', {
+                            class: 'tvguide-manager-row-name', href: detailUrl,
+                            target: '_blank', rel: 'noopener',
+                            title: `Open ${channel.name} in Stash`
+                        }, displayName)
+                        : el('span', { class: 'tvguide-manager-row-name' }, displayName),
                     el('span', { class: 'tvguide-manager-row-meta' },
                         pref?.name ? `${channel.name} · ` : '',
                         channel.sceneCount == null ? 'saved filter' : `${channel.sceneCount} scenes`)
@@ -348,28 +399,28 @@ export function createManager({ store }) {
                         pressed: included,
                         onclick: () => toggleIncluded(state, source, channel, included)
                     }),
-                    toggleButton({
-                        label: pinned ? `Unpin ${channel.name}` : `Pin ${channel.name} to the top`,
-                        text: pinned ? '★' : '☆',
-                        pressed: pinned,
-                        disabled: !included,
-                        onclick: () => store.dispatch({ type: Events.TOGGLE_PIN, channelId: channel.id })
-                    }),
-                    toggleButton({
-                        label: hidden ? `Show ${channel.name}` : `Hide ${channel.name}`,
-                        text: hidden ? 'Show' : 'Hide',
-                        pressed: hidden,
-                        disabled: !included,
-                        onclick: () => store.dispatch({ type: Events.TOGGLE_HIDDEN, channelId: channel.id })
-                    }),
-                    el('button', {
-                        class: 'tvguide-manager-edit',
-                        type: 'button',
-                        'aria-expanded': isEditing ? 'true' : 'false',
-                        'aria-label': `Customise ${channel.name}`,
-                        text: 'Edit',
-                        onclick: () => toggleEditor(channel.id)
-                    })
+                    included ? [
+                        toggleButton({
+                            label: pinned ? `Unpin ${channel.name}` : `Pin ${channel.name} to the top`,
+                            text: pinned ? '★' : '☆',
+                            pressed: pinned,
+                            onclick: () => store.dispatch({ type: Events.TOGGLE_PIN, channelId: channel.id })
+                        }),
+                        toggleButton({
+                            label: hidden ? `Show ${channel.name}` : `Hide ${channel.name}`,
+                            text: hidden ? 'Show' : 'Hide',
+                            pressed: hidden,
+                            onclick: () => store.dispatch({ type: Events.TOGGLE_HIDDEN, channelId: channel.id })
+                        }),
+                        el('button', {
+                            class: 'tvguide-manager-edit',
+                            type: 'button',
+                            'aria-expanded': isEditing ? 'true' : 'false',
+                            'aria-label': `Customise ${channel.name}`,
+                            text: 'Edit',
+                            onclick: () => toggleEditor(channel.id)
+                        })
+                    ] : null
                 )
             ),
             isEditing ? renderEditor(channel, pref) : null
@@ -408,7 +459,9 @@ export function createManager({ store }) {
         let lineup = others;
         if (included && rule) {
             // Freeze the current membership, minus the one being removed.
-            const swept = (state.catalog?.[source] || [])
+            const page = sel.catalogPage(state, source);
+            const catalog = page.loadedPages.length > 0 ? page.channels : (state.catalog?.[source] || []);
+            const swept = catalog
                 .filter((c) => c.id !== channel.id)
                 .filter((c) => state.allChannels.some((live) => live.id === c.id))
                 .map((c) => c.id.slice(source.length + 1));
@@ -418,7 +471,11 @@ export function createManager({ store }) {
 
         if (picks.size > 0) lineup = [...lineup, { source, ids: [...picks] }];
 
-        store.dispatch({ type: Events.SET_LINEUP, lineup });
+        store.dispatch({
+            type: included ? Events.MANAGER_CHANNEL_REMOVED : Events.MANAGER_CHANNEL_INCLUDED,
+            lineup,
+            channel
+        });
     }
 
     function renderEditor(channel, pref) {

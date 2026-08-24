@@ -75,6 +75,9 @@ export function createInitialState() {
         managerSort: DEFAULT_SORT,
         managerOpen: false,
         managerSearch: '',
+        managerCatalogFavorited: false,
+        managerCatalogGender: 'all',
+        catalogRequests: {},
         // Keyed by source: the catalogue is fetched one type at a time.
         managerSource: 'studio',
         catalog: {},
