@@ -270,6 +270,10 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
 
             banner.render(state);
             view.render(state);
+            if (state.guideScrollChannelId) {
+                view.scrollChannelIntoView?.(state.guideScrollChannelId, 'start');
+                store.dispatch({ type: Events.CONSUME_GUIDE_SCROLL });
+            }
             manager.render(state);
             player.render(state);
             renderStatus(state);

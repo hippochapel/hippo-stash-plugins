@@ -517,6 +517,12 @@ describe('overlay', () => {
             ...overrides
         });
 
+    it('consumes a saved-channel scroll target after rendering its guide row', () => {
+        const { store, overlay } = mountOverlay(baseState({ guideScrollChannelId: 'studio:1' }));
+        expect(overlay.element.querySelector('[data-channel-id="studio:1"]')).not.toBeNull();
+        expect(store.getState().guideScrollChannelId).toBeNull();
+    });
+
     describe('the type chips', () => {
         it('live in the toolbar, not in a bar of their own', () => {
             // Two stacked strips of channel controls read as two unrelated

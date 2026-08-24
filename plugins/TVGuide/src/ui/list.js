@@ -51,6 +51,12 @@ export function createList({ store, onRowVisible }) {
             update(state);
         },
 
+        scrollChannelIntoView(channelId) {
+            const safeId = String(channelId).replace(/"/g, '\\"');
+            const item = root.querySelector(`[data-channel-id="${safeId}"]`);
+            if (item) root.scrollTop = item.offsetTop;
+        },
+
         destroy() {
             if (observer) observer.disconnect();
         }
