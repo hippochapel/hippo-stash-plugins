@@ -25,6 +25,11 @@ describe('fetchScenePool', () => {
         }
     });
 
+    it('requests related performer and tag identifiers for scene details', () => {
+        expect(SCENE_POOL_QUERY).toContain('performers { id name }');
+        expect(SCENE_POOL_QUERY).toContain('tags { id name }');
+    });
+
     it('returns the scenes', async () => {
         const scenes = [{ id: '1' }];
         expect(await fetchScenePool(async () => ({ findScenes: { scenes } }), filter, 10)).toBe(scenes);

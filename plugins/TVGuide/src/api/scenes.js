@@ -18,6 +18,8 @@ export const SCENE_POOL_QUERY = `query TVGuideScenePool($filter: SceneFilterType
       paths { screenshot stream }
       files { duration }
       studio { name }
+      performers { id name }
+      tags { id name }
     }
   }
 }`;
