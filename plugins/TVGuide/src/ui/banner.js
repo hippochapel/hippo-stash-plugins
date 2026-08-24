@@ -17,6 +17,38 @@ import { openSource, sourceUrl } from './sourceLink.js';
 export function createBanner({ store } = {}) {
     const root = el('div', { class: 'tvguide-banner' });
 
+    function relatedSection(label, source, entities) {
+        const unique = new Map();
+        for (const entity of entities || []) {
+            const id = String(entity?.id || '').trim();
+            const name = String(entity?.name || '').trim();
+            if (id && name) unique.set(id, { id, name });
+        }
+        if (unique.size === 0) return null;
+
+        return el(
+            'section',
+            { class: 'tvguide-related', 'data-source': source, 'aria-label': label },
+            el('span', { class: 'tvguide-related-label' }, label),
+            el(
+                'span',
+                { class: 'tvguide-related-items' },
+                [...unique.values()].map((entity) =>
+                    el(
+                        'button',
+                        {
+                            class: 'tvguide-related-chip',
+                            type: 'button',
+                            'aria-label': `Tune to ${entity.name}`,
+                            onclick: () => store?.dispatch({ type: Events.TUNE_RELATED, source, entity })
+                        },
+                        entity.name
+                    )
+                )
+            )
+        );
+    }
+
     /**
      * Leaving for Stash belongs beside the scene it opens.
      *
@@ -120,6 +152,20 @@ export function createBanner({ store } = {}) {
                     ),
                     scene.details
                         ? el('p', { class: 'tvguide-banner-details' }, scene.details)
+                        : null,
+                    relatedSection('Models', 'performer', scene.performers),
+                    relatedSection('Tags', 'tag', scene.tags),
+                    sel.temporaryChannelSaveState(state)
+                        ? el(
+                              'button',
+                              {
+                                  class: 'tvguide-save-channel',
+                                  type: 'button',
+                                  disabled: sel.temporaryChannelSaveState(state) === 'saved',
+                                  onclick: () => store?.dispatch({ type: Events.SAVE_TEMPORARY_CHANNEL })
+                              },
+                              sel.temporaryChannelSaveState(state) === 'saved' ? 'Saved' : 'Save channel'
+                          )
                         : null
                 )
             );

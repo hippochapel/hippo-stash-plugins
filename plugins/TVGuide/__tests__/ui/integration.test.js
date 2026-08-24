@@ -18,6 +18,7 @@ import { PoolStatus } from '../../src/state/initialState.js';
 import { createInitialState } from '../../src/state/initialState.js';
 import { groupChannels, flattenGroups } from '../../src/domain/channelPrefs.js';
 import { KNOWN_SOURCES } from '../../src/domain/lineup.js';
+import { relatedChannel } from '../../src/domain/relatedChannel.js';
 
 const MIN = 60000;
 const NOON = new Date(2026, 7, 22, 12, 0, 0).getTime();
@@ -394,6 +395,49 @@ describe('banner', () => {
             'tvguide-banner-logo',
             'tvguide-watch'
         ]);
+    });
+
+    it('renders related model and tag chips below the scene details', () => {
+        const state = baseState();
+        const entry = state.schedules['studio:1'].entries[0];
+        entry.scene = {
+            ...entry.scene,
+            performers: [{ id: '7', name: 'Avery Lane' }],
+            tags: [{ id: '9', name: 'Outdoor' }]
+        };
+        const store = createStore({ initialState: state });
+        const banner = createBanner({ store });
+        banner.render(store.getState());
+
+        expect(banner.element.querySelector('[data-source="performer"]').textContent).toContain('Avery Lane');
+        expect(banner.element.querySelector('[data-source="tag"]').textContent).toContain('Outdoor');
+    });
+
+    it('tunes a temporary model channel from its related chip', () => {
+        const state = baseState();
+        const entry = state.schedules['studio:1'].entries[0];
+        entry.scene = { ...entry.scene, performers: [{ id: '7', name: 'Avery Lane' }] };
+        const store = createStore({ initialState: state });
+        const banner = createBanner({ store });
+        banner.render(store.getState());
+
+        banner.element.querySelector('.tvguide-related-chip').click();
+        expect(store.getState().tunedChannelId).toBe('performer:7');
+    });
+
+    it('shows Save channel while a temporary channel is described', () => {
+        const temporary = relatedChannel('performer', { id: '7', name: 'Avery Lane' });
+        const state = baseState({
+            allChannels: [...baseState().allChannels, temporary],
+            temporaryChannel: temporary,
+            tunedChannelId: temporary.id,
+            focus: { channelId: temporary.id, timeMs: NOON },
+            schedules: { [temporary.id]: buildDaySchedule(temporary.id, scenes(4), DAY_KEY) }
+        });
+        const banner = createBanner({ store: createStore({ initialState: state }) });
+        banner.render(state);
+
+        expect(banner.element.querySelector('.tvguide-save-channel').textContent).toBe('Save channel');
     });
 
     it('opens the channel in Stash from its badge', () => {
