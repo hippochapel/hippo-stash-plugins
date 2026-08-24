@@ -30,7 +30,8 @@ Press **Channels** in the toolbar (or `c`) to open the channel manager: browse
 every studio, tag, group and saved filter in your library, search them, and
 choose what becomes a channel.
 
-Two independent things are stored, deliberately apart:
+Two independent things are stored, deliberately apart in TV Guide's Stash
+plugin configuration, so they follow the same Stash instance across browsers:
 
 - **The lineup** (`tvguide_lineup`) decides which channels exist.
 - **Prefs** (`tvguide_channel_prefs`) decide how a channel is presented — pinned,

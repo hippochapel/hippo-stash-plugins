@@ -2,7 +2,8 @@ import {
     DEFAULT_SETTINGS,
     PLUGIN_ID,
     normalizeSettings,
-    loadSettings
+    loadSettings,
+    loadPluginConfiguration
 } from '../../src/api/settings.js';
 
 describe('normalizeSettings', () => {
@@ -71,5 +72,14 @@ describe('loadSettings', () => {
 
     it('falls back to defaults when the response shape is unexpected', async () => {
         expect(await loadSettings(async () => ({}))).toEqual(DEFAULT_SETTINGS);
+    });
+});
+
+describe('loadPluginConfiguration', () => {
+    it('returns the complete persisted plugin configuration', async () => {
+        const config = { guide_window_hours: 2, tvguide_state: { tvguide_muted: 'false' } };
+        const gql = jest.fn(async () => ({ configuration: { plugins: { [PLUGIN_ID]: config } } }));
+
+        expect(await loadPluginConfiguration(gql)).toEqual(config);
     });
 });

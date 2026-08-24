@@ -8,9 +8,10 @@
 import './styles/index.css';
 
 import { createClient } from './api/client.js';
-import { loadSettings } from './api/settings.js';
+import { loadPluginConfiguration, normalizeSettings } from './api/settings.js';
+import { createPluginStorage } from './api/pluginStorage.js';
 import { createPoolCache } from './api/cache.js';
-import { parseLineup, serializeLineup, DEFAULT_LINEUP } from './domain/lineup.js';
+import { parseLineup, DEFAULT_LINEUP } from './domain/lineup.js';
 import {
     parsePrefs,
     parsePinOrder,
@@ -33,26 +34,16 @@ import { Events, STORAGE_KEYS } from './state/actions.js';
 /** The now-line and progress bars are only honest if they move every second. */
 const TICK_MS = 1000;
 
-function readLineup() {
+function readLineup(storage, settings) {
     try {
-        return parseLineup(window.localStorage.getItem(STORAGE_KEYS.lineup));
+        const stored = storage.getItem(STORAGE_KEYS.lineup);
+        if (stored !== null) return parseLineup(stored);
+
+        const lineup = [{ source: 'studio', minScenes: settings.guide_min_scenes }];
+        storage.setItem(STORAGE_KEYS.lineup, JSON.stringify(lineup));
+        return lineup;
     } catch (e) {
         return DEFAULT_LINEUP;
-    }
-}
-
-function seedLineup(settings) {
-    // Phase 1 has no channel manager, so the lineup is seeded from the settings
-    // the first time and then owned by localStorage -- which is exactly the
-    // structure the Phase 2 manager will write.
-    try {
-        if (window.localStorage.getItem(STORAGE_KEYS.lineup)) return;
-        window.localStorage.setItem(
-            STORAGE_KEYS.lineup,
-            serializeLineup([{ source: 'studio', minScenes: settings.guide_min_scenes }])
-        );
-    } catch (e) {
-        /* storage unavailable; readLineup falls back to the default */
     }
 }
 
@@ -72,14 +63,14 @@ function parseJsonArray(json) {
  * remembering 'fullscreen' would leave the state claiming a mode the browser is
  * not in, after which the button toggles the wrong way on its first press.
  */
-function readPlayerMode() {
-    const stored = readStored(STORAGE_KEYS.playerMode);
+function readPlayerMode(storage) {
+    const stored = readStored(storage, STORAGE_KEYS.playerMode);
     return stored === 'theater' ? 'theater' : 'corner';
 }
 
-function readStored(key, fallback = null) {
+function readStored(storage, key, fallback = null) {
     try {
-        const value = window.localStorage.getItem(key);
+        const value = storage.getItem(key);
         return value === null ? fallback : value;
     } catch (e) {
         return fallback;
@@ -92,13 +83,17 @@ export function start() {
     const announcer = createAnnouncer();
     const viewer = createViewer();
     const touchGuard = createTouchGuard();
+    let storage = null;
 
     const runEffect = createEffectRunner({
         gql,
         cache,
         viewer,
         player: { setMode: (mode) => overlayRef?.player.setMode(mode) },
-        storage: window.localStorage,
+        storage: {
+            getItem: (...args) => storage?.getItem(...args),
+            setItem: (...args) => storage?.setItem(...args)
+        },
         announce: (message) => announcer.announce(message),
         navigate: navigateToScene,
         getLineup: () => store.getState().lineup
@@ -156,42 +151,36 @@ export function start() {
         if (store.getState().open) store.dispatch({ type: Events.TICK, nowMs: Date.now() });
     }, TICK_MS);
 
-    loadSettings(gql).then((settings) => {
+    loadPluginConfiguration(gql).then((configuration) => {
+        const settings = normalizeSettings(configuration);
+        storage = createPluginStorage({ gql, initialConfiguration: configuration });
         store.dispatch({ type: Events.SETTINGS_LOADED, settings });
-        seedLineup(settings);
 
         if (settings.guide_navbar_button) navbar.start();
 
-        const prefs = parsePrefs(readStored(STORAGE_KEYS.prefs));
+        const prefs = parsePrefs(readStored(storage, STORAGE_KEYS.prefs));
 
         // Pins used to be a timestamp on each pref, which could not express a
         // manual order. Recover them into the ordered array on first run.
-        const storedPins = readStored(STORAGE_KEYS.pinOrder);
+        const storedPins = readStored(storage, STORAGE_KEYS.pinOrder);
         const pinOrder = storedPins ? parsePinOrder(storedPins) : migratePinOrder(prefs);
-        if (!storedPins && pinOrder.length > 0) {
-            try {
-                window.localStorage.setItem(STORAGE_KEYS.pinOrder, JSON.stringify(pinOrder));
-            } catch (e) {
-                /* storage unavailable; the migration simply repeats next time */
-            }
-        }
 
         store.dispatch({
             type: Events.PREFS_LOADED,
             prefs,
             pinOrder,
-            sort: migrateSort(readStored(STORAGE_KEYS.sort, DEFAULT_SORT)),
-            lineup: readLineup(),
-            collapsedGroups: parseJsonArray(readStored(STORAGE_KEYS.collapsed)),
-            headWidthPx: Number(readStored(STORAGE_KEYS.headWidth)) || undefined,
-            playerWidthPx: Number(readStored(STORAGE_KEYS.playerWidth)) || undefined,
-            playerMode: readPlayerMode()
+            sort: migrateSort(readStored(storage, STORAGE_KEYS.sort, DEFAULT_SORT)),
+            lineup: readLineup(storage, settings),
+            collapsedGroups: parseJsonArray(readStored(storage, STORAGE_KEYS.collapsed)),
+            headWidthPx: Number(readStored(storage, STORAGE_KEYS.headWidth)) || undefined,
+            playerWidthPx: Number(readStored(storage, STORAGE_KEYS.playerWidth)) || undefined,
+            playerMode: readPlayerMode(storage)
         });
 
         store.dispatch({
             type: Events.RESTORE,
-            tunedChannelId: readStored(STORAGE_KEYS.tunedChannel),
-            muted: readStored(STORAGE_KEYS.muted, String(settings.guide_start_muted)) !== 'false'
+            tunedChannelId: readStored(storage, STORAGE_KEYS.tunedChannel),
+            muted: readStored(storage, STORAGE_KEYS.muted, String(settings.guide_start_muted)) !== 'false'
         });
 
         // Deep link: arriving with #tvguide already set opens the guide.

@@ -40,6 +40,17 @@ function coerce(key, raw) {
     return Math.min(max, Math.max(min, Math.round(n)));
 }
 
+/** Load the full configuration when startup also needs persisted guide state. */
+export async function loadPluginConfiguration(gql) {
+    try {
+        const data = await gql(SETTINGS_QUERY);
+        const configuration = data?.configuration?.plugins?.[PLUGIN_ID];
+        return configuration && typeof configuration === 'object' ? configuration : {};
+    } catch (e) {
+        return {};
+    }
+}
+
 /** Merge stored values over the defaults, one key at a time. */
 export function normalizeSettings(stored) {
     const source = stored && typeof stored === 'object' ? stored : {};
@@ -55,10 +66,5 @@ export function normalizeSettings(stored) {
  * a config hiccup should not stop the guide from opening.
  */
 export async function loadSettings(gql) {
-    try {
-        const data = await gql(SETTINGS_QUERY);
-        return normalizeSettings(data?.configuration?.plugins?.[PLUGIN_ID]);
-    } catch (e) {
-        return { ...DEFAULT_SETTINGS };
-    }
+    return normalizeSettings(await loadPluginConfiguration(gql));
 }
