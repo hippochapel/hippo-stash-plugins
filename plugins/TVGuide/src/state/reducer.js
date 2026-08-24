@@ -20,6 +20,8 @@ import {
     togglePin,
     movePin
 } from '../domain/channelPrefs.js';
+import { relatedChannel } from '../domain/relatedChannel.js';
+import { parseChannelId } from '../domain/lineup.js';
 
 /** How far ahead of the current day panning is allowed to go. */
 const MAX_PAN_AHEAD_MS = 24 * 3600000;
@@ -87,6 +89,21 @@ function scheduleFor(state, channelId) {
     return state.schedules[channelId] || null;
 }
 
+function withoutTemporaryChannel(state) {
+    const temporary = state.temporaryChannel;
+    if (!temporary) return state;
+
+    const { [temporary.id]: _pool, ...pools } = state.pools;
+    const { [temporary.id]: _schedule, ...schedules } = state.schedules;
+    return withVisibleChannels({
+        ...state,
+        temporaryChannel: null,
+        allChannels: state.allChannels.filter((channel) => channel.id !== temporary.id),
+        pools,
+        schedules
+    });
+}
+
 /** What is live on a channel at `nowMs`, or null if it has no programming. */
 function liveProgram(state, channelId, nowMs) {
     const schedule = scheduleFor(state, channelId);
@@ -126,7 +143,10 @@ export function reduce(state, event) {
         }
 
         case Events.CLOSE:
-            return { state: { ...state, open: false }, effects: [Effects.stopViewer()] };
+            return {
+                state: { ...withoutTemporaryChannel(state), open: false, savedTemporaryChannelId: null },
+                effects: [Effects.stopViewer()]
+            };
 
         case Events.SETTINGS_LOADED:
             return { state: { ...state, settings: event.settings }, effects };
@@ -197,6 +217,11 @@ export function reduce(state, event) {
             if (!next.focus && next.channels.length > 0) {
                 next.focus = { channelId: next.channels[0].id, timeMs: state.nowMs };
             }
+            if (state.reloadScrollChannelId && event.channels.some((channel) => channel.id === state.reloadScrollChannelId)) {
+                next.temporaryChannel = null;
+                next.reloadScrollChannelId = null;
+                next.guideScrollChannelId = state.reloadScrollChannelId;
+            }
             return { state: next, effects };
         }
 
@@ -262,12 +287,19 @@ export function reduce(state, event) {
             };
 
         case Events.TUNE: {
-            if (!state.channels.some((c) => c.id === event.channelId)) return { state, effects };
+            let current = state;
+            if (current.temporaryChannel && current.temporaryChannel.id !== event.channelId) {
+                current = withoutTemporaryChannel(current);
+            }
+            if (current.savedTemporaryChannelId && current.savedTemporaryChannelId !== event.channelId) {
+                current = { ...current, savedTemporaryChannelId: null };
+            }
+            if (!current.channels.some((c) => c.id === event.channelId)) return { state: current, effects };
 
             // Tuning always lifts a pause: the whole point is to start watching
             // something. Leaving it set meant the player never came back,
             // because tuneEffects declines to act while paused.
-            const next = { ...state, tunedChannelId: event.channelId, viewerPaused: false };
+            const next = { ...current, tunedChannelId: event.channelId, viewerPaused: false };
             effects.push(Effects.persist(STORAGE_KEYS.tunedChannel, event.channelId));
 
             const channel = state.channels.find((c) => c.id === event.channelId);
@@ -290,6 +322,65 @@ export function reduce(state, event) {
             effects.push(...tuneEffects(next, event.channelId, state.nowMs));
             return { state: next, effects };
         }
+
+        case Events.TUNE_RELATED: {
+            const candidate = relatedChannel(event.source, event.entity);
+            if (!candidate) return { state, effects };
+
+            const existing = state.allChannels.find((channel) => channel.id === candidate.id);
+            if (existing) return reduce(state, { type: Events.TUNE, channelId: existing.id });
+
+            const cleared = withoutTemporaryChannel(state);
+            const next = withVisibleChannels({
+                ...cleared,
+                temporaryChannel: candidate,
+                allChannels: [...cleared.allChannels, candidate],
+                pools: {
+                    ...cleared.pools,
+                    [candidate.id]: { status: PoolStatus.LOADING, scenes: [], error: null }
+                }
+            });
+            const tuned = reduce(next, { type: Events.TUNE, channelId: candidate.id });
+            tuned.effects.push(
+                Effects.fetchPool(
+                    candidate.id,
+                    candidate.sceneFilter,
+                    poolCapFor(next.prefs, candidate.id, next.settings.guide_pool_cap)
+                )
+            );
+            return tuned;
+        }
+
+        case Events.SAVE_TEMPORARY_CHANNEL: {
+            const temporary = state.temporaryChannel;
+            const parsed = temporary && parseChannelId(temporary.id);
+            if (!temporary || !parsed) return { state, effects };
+
+            const entry = state.lineup.find((item) => item.source === parsed.source && Array.isArray(item.ids));
+            const ids = new Set(entry?.ids || []);
+            ids.add(parsed.id);
+            const lineup = [
+                ...state.lineup.filter((item) => !(item.source === parsed.source && Array.isArray(item.ids))),
+                { source: parsed.source, ids: [...ids] }
+            ];
+            return {
+                state: {
+                    ...state,
+                    lineup,
+                    channelsStatus: PoolStatus.LOADING,
+                    savedTemporaryChannelId: temporary.id,
+                    reloadScrollChannelId: temporary.id
+                },
+                effects: [
+                    Effects.persist(STORAGE_KEYS.lineup, JSON.stringify(lineup)),
+                    Effects.reloadChannels()
+                ]
+            };
+        }
+
+        case Events.CONSUME_GUIDE_SCROLL:
+            if (!state.guideScrollChannelId) return { state, effects };
+            return { state: { ...state, guideScrollChannelId: null }, effects };
 
         case Events.EXPAND: {
             // Without a time this is "open what is on now"; with one it is

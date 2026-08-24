@@ -3,6 +3,7 @@ import { KNOWN_SOURCES } from '../../src/domain/lineup.js';
 import { createInitialState, PoolStatus } from '../../src/state/initialState.js';
 import { Events, STORAGE_KEYS } from '../../src/state/actions.js';
 import { buildDaySchedule, dayBucket } from '../../src/domain/schedule.js';
+import { relatedChannel } from '../../src/domain/relatedChannel.js';
 
 const MIN = 60000;
 const HOUR = 3600000;
@@ -81,6 +82,54 @@ describe('CLOSE', () => {
         const { state, effects } = run(readyState(), { type: Events.CLOSE });
         expect(state.open).toBe(false);
         expect(effectTypes(effects)).toEqual(['stopViewer']);
+    });
+});
+
+describe('temporary related channels', () => {
+    it('creates and tunes one temporary model channel, requesting its pool', () => {
+        const { state, effects } = run(readyState(), {
+            type: Events.TUNE_RELATED,
+            source: 'performer',
+            entity: { id: '7', name: 'Avery Lane' }
+        });
+
+        expect(state.temporaryChannel.id).toBe('performer:7');
+        expect(state.tunedChannelId).toBe('performer:7');
+        expect(state.allChannels.map((c) => c.id)).toContain('performer:7');
+        expect(effectTypes(effects)).toContain('fetchPool');
+    });
+
+    it('drops an unsaved temporary channel when tuning another channel', () => {
+        const temporary = relatedChannel('tag', { id: '9', name: 'Outdoor' });
+        const base = readyState();
+        const state = { ...base, temporaryChannel: temporary, allChannels: [...base.allChannels, temporary] };
+
+        const { state: next } = run(state, { type: Events.TUNE, channelId: 'studio:2' });
+        expect(next.temporaryChannel).toBeNull();
+        expect(next.allChannels.map((c) => c.id)).not.toContain('tag:9');
+    });
+
+    it('promotes the temporary channel into the persisted lineup and waits to scroll', () => {
+        const temporary = relatedChannel('performer', { id: '7', name: 'Avery Lane' });
+        const base = readyState();
+        const state = { ...base, temporaryChannel: temporary, allChannels: [...base.allChannels, temporary] };
+
+        const result = run(state, { type: Events.SAVE_TEMPORARY_CHANNEL });
+        expect(result.state.lineup).toContainEqual({ source: 'performer', ids: ['7'] });
+        expect(result.state.reloadScrollChannelId).toBe('performer:7');
+        expect(effectTypes(result.effects)).toEqual(expect.arrayContaining(['persist', 'loadChannels']));
+    });
+
+    it('exposes the post-save scroll target once the reloaded lineup contains it', () => {
+        const base = readyState({ reloadScrollChannelId: 'tag:9' });
+        const saved = relatedChannel('tag', { id: '9', name: 'Outdoor' });
+        const { state } = run(base, {
+            type: Events.CHANNELS_LOADED,
+            channels: [...base.allChannels, saved]
+        });
+
+        expect(state.guideScrollChannelId).toBe('tag:9');
+        expect(run(state, { type: Events.CONSUME_GUIDE_SCROLL }).state.guideScrollChannelId).toBeNull();
     });
 });
 

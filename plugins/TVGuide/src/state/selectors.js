@@ -153,6 +153,14 @@ export function focusedChannel(state) {
     return state.allChannels.find((c) => c.id === state.focus.channelId) || null;
 }
 
+export const isFocusedTemporaryChannel = (state) =>
+    focusedChannel(state)?.id === state.temporaryChannel?.id;
+
+export const temporaryChannelSaveState = (state) => {
+    if (isFocusedTemporaryChannel(state)) return 'save';
+    return focusedChannel(state)?.id === state.savedTemporaryChannelId ? 'saved' : null;
+};
+
 /**
  * True once the lineup resolved to something.
  *

@@ -42,6 +42,10 @@ export function createInitialState() {
         pools: {},
         // channelId -> daySchedule, rebuilt when the broadcast day rolls over
         schedules: {},
+        temporaryChannel: null,
+        savedTemporaryChannelId: null,
+        reloadScrollChannelId: null,
+        guideScrollChannelId: null,
 
         tunedChannelId: null,
         focus: null,
