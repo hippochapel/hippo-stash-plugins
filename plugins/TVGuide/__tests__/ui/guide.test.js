@@ -417,6 +417,12 @@ describe('row controls', () => {
         expect(row.querySelector('.tvguide-logo-button').title).toBe('Watch Alpha');
     });
 
+    it('shows a performer name beside its portrait', () => {
+        const performer = { ...chan('performer:1', 'Avery', 'performer'), logo: { type: 'image', url: '/avery.jpg' } };
+        const { grid } = mount({ allChannels: [performer] });
+        expect(grid.element.querySelector('.tvguide-logo-button-with-name').textContent).toContain('Avery');
+    });
+
     it('watches the channel when its badge is pressed', () => {
         // Pressing a channel in a guide means "put this on". The way out to
         // Stash lives on the badge in the scene details instead.

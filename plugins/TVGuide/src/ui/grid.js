@@ -280,6 +280,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         const savedTemporary = temporary && state.savedTemporaryChannelId === channel.id;
         const inPinnedGroup = group.key === PINNED_GROUP;
         const hasArtwork = channel.logo?.type === 'image';
+        const showArtworkName = hasArtwork && channel.source === 'performer';
 
         const row = el(
             'div',
@@ -321,13 +322,13 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                 el(
                     'button',
                     {
-                        class: hasArtwork ? 'tvguide-logo-button' : 'tvguide-row-name',
+                        class: hasArtwork ? `tvguide-logo-button${showArtworkName ? ' tvguide-logo-button-with-name' : ''}` : 'tvguide-row-name',
                         type: 'button',
                         'aria-label': `Watch ${channel.name}`,
                         title: `Watch ${channel.name}`,
                         onclick: () => store.dispatch({ type: Events.TUNE, channelId: channel.id })
                     },
-                    hasArtwork ? logoBadge(channel) : channel.name
+                    hasArtwork ? [logoBadge(channel), showArtworkName ? el('span', { class: 'tvguide-logo-name' }, channel.name) : null] : channel.name
                 )
             ),
             el('div', { class: 'tvguide-row-track' })

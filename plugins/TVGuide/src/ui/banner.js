@@ -92,7 +92,10 @@ export function createBanner({ store } = {}) {
      * would look for it. A saved filter has no detail page, so it stays a badge.
      */
     function channelLink(channel) {
-        if (!sourceUrl(channel)) return el('div', { class: 'tvguide-banner-logo' }, logoBadge(channel));
+        const labelledBadge = channel.source === 'performer'
+            ? [logoBadge(channel), el('span', { class: 'tvguide-banner-logo-name' }, channel.name)]
+            : logoBadge(channel);
+        if (!sourceUrl(channel)) return el('div', { class: 'tvguide-banner-logo' }, labelledBadge);
         return el(
             'button',
             {
@@ -102,7 +105,7 @@ export function createBanner({ store } = {}) {
                 title: `Open ${channel.name} in Stash`,
                 onclick: () => openSource(channel)
             },
-            logoBadge(channel)
+            labelledBadge
         );
     }
 
