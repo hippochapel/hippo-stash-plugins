@@ -27,7 +27,8 @@ programming simply loops — which is what cable does anyway.
 ## Channels
 
 Press **Channels** in the toolbar (or `c`) to open the channel manager: browse
-every studio, tag, group and saved filter in your library, search them, and
+every studio, tag, group and saved filter in your library, plus the built-in
+**New releases**, **Recently added**, **Movies**, and **Shorts** channels; then
 choose what becomes a channel.
 
 Two independent things are stored, deliberately apart in TV Guide's Stash
@@ -44,7 +45,8 @@ together would lose it.
 ### The lineup
 
 A list of source entries — studios, **models** (performers), tags, groups and
-saved filters mix freely in one guide:
+saved filters mix freely in one guide. The Special section contains four
+individual channels, which are explicit picks just like any other channel:
 
 ```json
 [
@@ -52,9 +54,17 @@ saved filters mix freely in one guide:
   { "source": "performer", "minScenes": 10 },
   { "source": "tag", "ids": ["12", "34"] },
   { "source": "group", "minScenes": 1 },
-  { "source": "savedFilter", "names": ["Favourites"] }
+  { "source": "savedFilter", "names": ["Favourites"] },
+  { "source": "special", "ids": ["new-releases", "movies"] }
 ]
 ```
+
+Special channels use Stash scene filters: **New releases** uses a scene's
+release date, **Recently added** uses when it was added to your library,
+**Movies** matches longer scenes, and **Shorts** matches shorter ones. They can
+be added, removed, pinned, hidden, renamed, and customised exactly like other
+channels. Fresh installations add all four automatically; existing saved
+lineups are left unchanged.
 
 An entry with `minScenes` is a **rule**: while it is on, a newly-added studio
 becomes a channel on its own. An entry with `ids` is an **explicit pick**.
@@ -132,6 +142,10 @@ made by media query, not touch capability, so tablets keep the grid.
 | `guide_min_scenes` | 5 | Sources below this become no channel |
 | `guide_window_hours` | 3 | Hours visible in the grid at once |
 | `guide_pool_cap` | 100 | Scenes drawn into a channel's schedule |
+| `guide_new_release_days` | 30 | Release-date age for New releases |
+| `guide_recently_added_days` | 14 | Library-added age for Recently added |
+| `guide_movie_min_minutes` | 90 | Minimum length for Movies |
+| `guide_short_max_minutes` | 5 | Maximum length for Shorts |
 | `guide_autoplay` | on | Play the tuned channel in the corner |
 | `guide_start_muted` | on | Browsers block autoplay with sound |
 | `guide_navbar_button` | on | The guide is always at `#tvguide` regardless |

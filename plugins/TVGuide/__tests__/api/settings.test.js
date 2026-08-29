@@ -21,6 +21,24 @@ describe('normalizeSettings', () => {
         expect(s.guide_pool_cap).toBe(DEFAULT_SETTINGS.guide_pool_cap);
     });
 
+    it('normalizes special-channel windows and duration cutoffs', () => {
+        expect(normalizeSettings({
+            guide_new_release_days: '45',
+            guide_recently_added_days: 10,
+            guide_movie_min_minutes: 75,
+            guide_short_max_minutes: 3
+        })).toMatchObject({
+            guide_new_release_days: 45,
+            guide_recently_added_days: 10,
+            guide_movie_min_minutes: 75,
+            guide_short_max_minutes: 3
+        });
+    });
+
+    it('uses ninety minutes for the default Movies cutoff', () => {
+        expect(normalizeSettings({}).guide_movie_min_minutes).toBe(90);
+    });
+
     it('coerces numeric strings, which is what Stash often stores', () => {
         expect(normalizeSettings({ guide_pool_cap: '250' }).guide_pool_cap).toBe(250);
     });

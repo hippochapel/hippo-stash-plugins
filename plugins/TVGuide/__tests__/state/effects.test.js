@@ -271,12 +271,13 @@ describe('loadCatalog', () => {
 
     it('asks only for the requested source, not the whole library', async () => {
         const fetchCatalogFn = jest.fn(async () => ({ catalog: {}, errors: [] }));
-        const { run, dispatch, getState } = harness({ fetchCatalogFn });
+        const { run, dispatch, getState, state } = harness({ fetchCatalogFn });
 
         run({ type: 'loadCatalog', source: 'tag' }, getState, dispatch);
         await flush();
 
         expect(fetchCatalogFn.mock.calls[0][1]).toEqual(['tag']);
+        expect(fetchCatalogFn.mock.calls[0][2]).toBe(state.settings);
     });
 
     it('falls back to every source when none is named', async () => {

@@ -209,7 +209,7 @@ export function createManager({ store }) {
                 'header',
                 { class: 'tvguide-manager-section-head' },
                 el('h3', {}, SOURCE_LABELS[source]),
-                ruleControl(state, source, rule),
+                source === 'special' ? null : ruleControl(state, source, rule),
                 bulkControls(state, source, rows)
             ),
             rows.length === 0
@@ -388,7 +388,9 @@ export function createManager({ store }) {
                         : el('span', { class: 'tvguide-manager-row-name' }, displayName),
                     el('span', { class: 'tvguide-manager-row-meta' },
                         pref?.name ? `${channel.name} · ` : '',
-                        channel.sceneCount == null ? 'saved filter' : `${channel.sceneCount} scenes`)
+                        channel.sceneCount == null
+                            ? (source === 'special' ? 'special channel' : 'saved filter')
+                            : `${channel.sceneCount} scenes`)
                 ),
                 el(
                     'div',

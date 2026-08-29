@@ -9,6 +9,10 @@ import { KNOWN_SOURCES } from '../../src/domain/lineup.js';
 const studioRows = (rows) => async () => ({ findStudios: { studios: rows } });
 
 describe('the registry covers every known source', () => {
+    it('includes the virtual special-channel source', () => {
+        expect(KNOWN_SOURCES).toContain('special');
+    });
+
     it('has a provider for each source the lineup accepts', () => {
         expect(Object.keys(PROVIDERS).sort()).toEqual([...KNOWN_SOURCES].sort());
     });
@@ -305,6 +309,27 @@ describe('resolveLineup', () => {
     it('returns nothing for an empty lineup', async () => {
         expect(await resolveLineup([], gql)).toEqual({ channels: [], errors: [] });
     });
+
+    it('passes settings to the special source when resolving explicit channel picks', async () => {
+        const { channels } = await resolveLineup(
+            [{ source: 'special', ids: ['movies'] }],
+            gql,
+            {
+                guide_new_release_days: 30,
+                guide_recently_added_days: 14,
+                guide_movie_min_minutes: 75,
+                guide_short_max_minutes: 5
+            },
+            new Date('2026-08-25T12:00:00Z')
+        );
+
+        expect(channels).toEqual([
+            expect.objectContaining({
+                id: 'special:movies',
+                sceneFilter: { duration: { value: 4500, modifier: 'GREATER_THAN' } }
+            })
+        ]);
+    });
 });
 
 describe('fetchCatalog', () => {
@@ -326,6 +351,9 @@ describe('fetchCatalog', () => {
         expect(Object.keys(catalog).sort()).toEqual([...KNOWN_SOURCES].sort());
         expect(catalog.studio[0].id).toBe('studio:1');
         expect(catalog.savedFilter[0].id).toBe('savedFilter:1');
+        expect(catalog.special.map((channel) => channel.id)).toEqual([
+            'special:new-releases', 'special:recently-added', 'special:movies', 'special:shorts'
+        ]);
     });
 
     it('ignores lineup thresholds, so nothing is pre-filtered out of the picker', async () => {

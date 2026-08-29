@@ -88,7 +88,7 @@ describe('presentation', () => {
         const options = Array.from(
             manager.element.querySelectorAll('.tvguide-manager-source option')
         ).map((o) => o.textContent);
-        expect(options).toEqual(['Studios', 'Models', 'Tags', 'Groups', 'Filters']);
+        expect(options).toEqual(['Special', 'Studios', 'Models', 'Tags', 'Groups', 'Filters']);
     });
 
     it('switches source from the dropdown', () => {
@@ -307,6 +307,26 @@ describe('lineup rules', () => {
 });
 
 describe('adding and removing channels', () => {
+    it('adds and pins a special channel through the normal channel controls', () => {
+        const movie = chan('special:movies', 'Movies', null, 'special');
+        const { store, manager } = mount({
+            managerSource: 'special',
+            lineup: [],
+            allChannels: [],
+            channels: [],
+            channelGroups: [],
+            catalog: { ...CATALOG, special: [movie] }
+        });
+
+        expect(manager.element.querySelector('.tvguide-manager-rule')).toBeNull();
+        expect(rowFor(manager, 'special:movies').textContent).toContain('special channel');
+        buttonLabelled(rowFor(manager, 'special:movies'), /Add to guide/).click();
+        buttonLabelled(rowFor(manager, 'special:movies'), /Pin Movies/).click();
+
+        expect(store.getState().lineup).toEqual([{ source: 'special', ids: ['movies'] }]);
+        expect(store.getState().pinOrder).toEqual(['special:movies']);
+    });
+
     it('adds a channel the rule left out', () => {
         const { store, manager } = mount();
         buttonLabelled(rowFor(manager, 'studio:3'), /Add to guide/).click();

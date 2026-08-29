@@ -11,13 +11,15 @@ import tag from './tag.js';
 import group from './group.js';
 import performer from './performer.js';
 import savedFilter from './savedFilter.js';
+import special from './special.js';
 
 export const PROVIDERS = {
     [studio.source]: studio,
     [tag.source]: tag,
     [group.source]: group,
     [performer.source]: performer,
-    [savedFilter.source]: savedFilter
+    [savedFilter.source]: savedFilter,
+    [special.source]: special
 };
 
 /**
@@ -31,13 +33,13 @@ export const PROVIDERS = {
  *
  * @returns {Promise<{channels: Array, errors: Array<{source, message}>}>}
  */
-export async function resolveLineup(lineup, gql) {
+export async function resolveLineup(lineup, gql, settings, now) {
     const results = await Promise.all(
         lineup.map(async (entry) => {
             const provider = PROVIDERS[entry.source];
             if (!provider) return { channels: [], error: null };
             try {
-                return { channels: await provider.listChannels(entry, gql), error: null };
+                return { channels: await provider.listChannels(entry, gql, settings, now), error: null };
             } catch (e) {
                 return { channels: [], error: { source: entry.source, message: e.message } };
             }
@@ -74,13 +76,13 @@ export async function resolveLineup(lineup, gql) {
  *
  * @returns {Promise<{catalog: Object<string, Array>, errors: Array}>}
  */
-export async function fetchCatalog(gql, sources = Object.keys(PROVIDERS)) {
+export async function fetchCatalog(gql, sources = Object.keys(PROVIDERS), settings, now) {
     const results = await Promise.all(
         sources.map(async (source) => {
             const provider = PROVIDERS[source];
             if (!provider) return { source, channels: [], error: null };
             try {
-                return { source, channels: await provider.listChannels({ source }, gql), error: null };
+                return { source, channels: await provider.listChannels({ source }, gql, settings, now), error: null };
             } catch (e) {
                 return { source, channels: [], error: { source, message: e.message } };
             }
@@ -97,10 +99,10 @@ export async function fetchCatalog(gql, sources = Object.keys(PROVIDERS)) {
     return { catalog, errors };
 }
 
-export async function fetchCatalogPage(gql, source, request) {
+export async function fetchCatalogPage(gql, source, request, settings, now) {
     const provider = PROVIDERS[source];
     if (!provider || typeof provider.listCatalogPage !== 'function') {
         return { channels: [], total: 0 };
     }
-    return provider.listCatalogPage(request, gql);
+    return provider.listCatalogPage(request, gql, settings, now);
 }

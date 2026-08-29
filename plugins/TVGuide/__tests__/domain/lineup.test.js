@@ -14,7 +14,14 @@ describe('DEFAULT_LINEUP', () => {
     });
 
     it('is studio-based, which every Stash library has', () => {
-        expect(DEFAULT_LINEUP[0].source).toBe('studio');
+        expect(DEFAULT_LINEUP).toEqual([
+            { source: 'special', minScenes: 0, ids: ['new-releases', 'recently-added', 'movies', 'shorts'] },
+            { source: 'studio', minScenes: 5 }
+        ]);
+    });
+
+    it('orders Special before the regular source groups', () => {
+        expect(KNOWN_SOURCES[0]).toBe('special');
     });
 });
 

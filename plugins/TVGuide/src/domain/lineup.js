@@ -10,7 +10,7 @@
  * to break the guide.
  */
 
-export const KNOWN_SOURCES = ['studio', 'performer', 'tag', 'group', 'savedFilter'];
+export const KNOWN_SOURCES = ['special', 'studio', 'performer', 'tag', 'group', 'savedFilter'];
 
 /** What each source is called in the UI. Performers are shown as "Models". */
 export const SOURCE_LABELS = {
@@ -18,11 +18,15 @@ export const SOURCE_LABELS = {
     performer: 'Models',
     tag: 'Tags',
     group: 'Groups',
-    savedFilter: 'Filters'
+    savedFilter: 'Filters',
+    special: 'Special'
 };
 
-/** Every Stash library has studios, so this produces a usable guide unconfigured. */
-export const DEFAULT_LINEUP = [{ source: 'studio', minScenes: 5 }];
+/** A fresh guide starts with the four virtual channels plus every established studio. */
+export const DEFAULT_LINEUP = [
+    { source: 'special', minScenes: 0, ids: ['new-releases', 'recently-added', 'movies', 'shorts'] },
+    { source: 'studio', minScenes: 5 }
+];
 
 function toStringList(value) {
     if (!Array.isArray(value)) return undefined;
