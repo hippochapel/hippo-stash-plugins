@@ -54,7 +54,7 @@ export function createEffectRunner({
                 // lineup, say) becomes a reported failure rather than an
                 // exception escaping the effect drain loop.
                 Promise.resolve()
-                    .then(() => resolveLineup(getLineup(), gql))
+                    .then(() => resolveLineup(getLineup(), gql, getState().settings))
                     .then(
                         ({ channels, errors }) =>
                             dispatch({ type: Events.CHANNELS_LOADED, channels, errors }),
@@ -94,7 +94,7 @@ export function createEffectRunner({
                 // thousands of rows across studios, models and tags, and you
                 // only ever browse one type at once.
                 Promise.resolve()
-                    .then(() => fetchCatalogFn(gql, effect.source ? [effect.source] : undefined))
+                    .then(() => fetchCatalogFn(gql, effect.source ? [effect.source] : undefined, getState().settings))
                     .then(
                         ({ catalog }) =>
                             dispatch({ type: Events.CATALOG_LOADED, source: effect.source, catalog }),
@@ -109,7 +109,7 @@ export function createEffectRunner({
 
             case 'loadCatalogPage':
                 Promise.resolve()
-                    .then(() => fetchCatalogPageFn(gql, effect.source, effect))
+                    .then(() => fetchCatalogPageFn(gql, effect.source, effect, getState().settings))
                     .then(
                         ({ channels, total }) => dispatch({
                             type: Events.CATALOG_PAGE_LOADED,

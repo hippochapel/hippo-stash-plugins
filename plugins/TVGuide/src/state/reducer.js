@@ -218,21 +218,35 @@ export function reduce(state, event) {
             // so every schedule is rebuilt together and the guide starts a new
             // broadcast day rather than drifting.
             if (key !== state.dayKey) {
+                const specialChannelIds = new Set(
+                    state.allChannels.filter((channel) => channel.source === 'special').map((channel) => channel.id)
+                );
                 const schedules = {};
                 for (const [channelId, pool] of Object.entries(state.pools)) {
+                    if (specialChannelIds.has(channelId)) continue;
                     if (pool.status === PoolStatus.READY) {
                         schedules[channelId] = buildDaySchedule(channelId, pool.scenes, key);
                     }
                 }
+                const pools = Object.fromEntries(
+                    Object.entries(state.pools).filter(([channelId]) => !specialChannelIds.has(channelId))
+                );
                 const rolled = {
                     ...state,
                     nowMs: event.nowMs,
                     dayKey: key,
                     dayStartMs: startMs,
+                    pools,
                     schedules,
                     windowStartMs: snapToStep(event.nowMs, HALF_HOUR_MS)
                 };
-                return { state: rolled, effects: tuneEffects(rolled, rolled.tunedChannelId, event.nowMs) };
+                return {
+                    state: rolled,
+                    effects: [
+                        ...tuneEffects(rolled, rolled.tunedChannelId, event.nowMs),
+                        ...(specialChannelIds.size > 0 ? [Effects.reloadChannels()] : [])
+                    ]
+                };
             }
 
             const next = { ...state, nowMs: event.nowMs };

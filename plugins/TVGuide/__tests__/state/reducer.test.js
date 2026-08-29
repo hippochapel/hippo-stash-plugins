@@ -258,6 +258,25 @@ describe('TICK', () => {
         expect(Object.keys(next.schedules)).toEqual(['studio:1']);
     });
 
+    it('refreshes special channels and drops their old pools at the day boundary', () => {
+        const state = readyState({
+            allChannels: [{ ...channel('special:new-releases'), source: 'special' }, channel('studio:1')],
+            channels: [{ ...channel('special:new-releases'), source: 'special' }, channel('studio:1')]
+        });
+        state.pools['special:new-releases'] = { status: PoolStatus.READY, scenes: scenes(1), error: null };
+        state.schedules['special:new-releases'] = buildDaySchedule('special:new-releases', state.pools['special:new-releases'].scenes, DAY_KEY);
+
+        const { state: next, effects } = run(state, {
+            type: Events.TICK,
+            nowMs: new Date(2026, 7, 23, 0, 1).getTime()
+        });
+
+        expect(effects.map((effect) => effect.type)).toContain('loadChannels');
+        expect(next.pools['special:new-releases']).toBeUndefined();
+        expect(next.schedules['special:new-releases']).toBeUndefined();
+        expect(next.pools['studio:1']).toEqual(state.pools['studio:1']);
+    });
+
     it('stays quiet when nothing is tuned', () => {
         const { effects } = run(readyState({ tunedChannelId: null }), {
             type: Events.TICK,

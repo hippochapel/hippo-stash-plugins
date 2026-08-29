@@ -39,7 +39,10 @@ function readLineup(storage, settings) {
         const stored = storage.getItem(STORAGE_KEYS.lineup);
         if (stored !== null) return parseLineup(stored);
 
-        const lineup = [{ source: 'studio', minScenes: settings.guide_min_scenes }];
+        const lineup = [
+            { source: 'special', minScenes: 0, ids: ['new-releases', 'recently-added', 'movies', 'shorts'] },
+            { source: 'studio', minScenes: settings.guide_min_scenes }
+        ];
         storage.setItem(STORAGE_KEYS.lineup, JSON.stringify(lineup));
         return lineup;
     } catch (e) {
