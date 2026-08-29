@@ -326,7 +326,11 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                         type: 'button',
                         'aria-label': `Watch ${channel.name}`,
                         title: `Watch ${channel.name}`,
-                        onclick: () => store.dispatch({ type: Events.TUNE, channelId: channel.id })
+                        onclick: () => store.dispatch({
+                            type: Events.TUNE,
+                            channelId: channel.id,
+                            scrollIntoView: false
+                        })
                     },
                     hasArtwork ? [logoBadge(channel), showArtworkName ? el('span', { class: 'tvguide-logo-name' }, channel.name) : null] : channel.name
                 )
@@ -446,7 +450,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                     store.dispatch({
                         type: Events.FOCUS_CELL,
                         channelId,
-                        timeMs: program.startMs,
+                        timeMs: isLive ? programAt(store.getState().schedules[channelId], store.getState().nowMs, store.getState().dayStartMs).startMs : program.startMs,
                         source: 'hover'
                     });
                 }

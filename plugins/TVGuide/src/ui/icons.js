@@ -39,7 +39,8 @@ export const ICONS = {
     theater: () => icon(['M3 6h18v9H3z'], { filled: false }),
     fullscreen: () => icon(['M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'], { filled: false }),
     exitFullscreen: () => icon(['M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'], { filled: false }),
-    search: () => icon(['M11 4a7 7 0 100 14 7 7 0 000-14zM16 16l4.5 4.5'], { filled: false })
+    search: () => icon(['M11 4a7 7 0 100 14 7 7 0 000-14zM16 16l4.5 4.5'], { filled: false }),
+    history: () => icon(['M4 12a8 8 0 101.8-5.1M4 5v4h4M12 8v4l3 2'], { filled: false })
 };
 
 /**

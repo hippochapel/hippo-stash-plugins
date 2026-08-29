@@ -103,4 +103,5 @@ export const STORAGE_KEYS = {
     headWidth: 'tvguide_head_width',
     playerWidth: 'tvguide_player_width',
     playerMode: 'tvguide_player_mode'
+    ,recentChannels: 'tvguide_recent_channels'
 };

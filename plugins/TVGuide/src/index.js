@@ -178,6 +178,7 @@ export function start() {
             headWidthPx: Number(readStored(storage, STORAGE_KEYS.headWidth)) || undefined,
             playerWidthPx: Number(readStored(storage, STORAGE_KEYS.playerWidth)) || undefined,
             playerMode: readPlayerMode(storage)
+            ,recentChannelIds: parseJsonArray(readStored(storage, STORAGE_KEYS.recentChannels))
         });
 
         store.dispatch({

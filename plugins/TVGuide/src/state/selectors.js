@@ -26,6 +26,10 @@ export const poolStatus = (state, channelId) =>
 
 export const channelGroups = (state) => state.channelGroups;
 export const playerMode = (state) => state.playerMode;
+export const recentChannels = (state) => (state.recentChannelIds || [])
+    .map((id) => state.allChannels.find((channel) => channel.id === id))
+    .filter(Boolean)
+    .map((channel) => ({ channel, program: liveProgram(state, channel.id) }));
 export const isViewerPaused = (state) => state.viewerPaused;
 export const headWidthPx = (state) => state.headWidthPx;
 export const playerWidthPx = (state) => state.playerWidthPx;

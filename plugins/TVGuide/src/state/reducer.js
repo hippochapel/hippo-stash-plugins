@@ -377,8 +377,16 @@ export function reduce(state, event) {
             // Tuning always lifts a pause: the whole point is to start watching
             // something. Leaving it set meant the player never came back,
             // because tuneEffects declines to act while paused.
-            const next = { ...current, tunedChannelId: event.channelId, viewerPaused: false };
+            const recentChannelIds = [event.channelId, ...(current.recentChannelIds || []).filter((id) => id !== event.channelId)].slice(0, 10);
+            const next = {
+                ...current,
+                tunedChannelId: event.channelId,
+                guideScrollChannelId: event.scrollIntoView === false ? null : event.channelId,
+                viewerPaused: false,
+                recentChannelIds
+            };
             effects.push(Effects.persist(STORAGE_KEYS.tunedChannel, event.channelId));
+            effects.push(Effects.persist(STORAGE_KEYS.recentChannels, JSON.stringify(recentChannelIds)));
 
             const channel = state.channels.find((c) => c.id === event.channelId);
             const program = liveProgram(next, event.channelId, state.nowMs);
@@ -549,6 +557,7 @@ export function reduce(state, event) {
                     headWidthPx: event.headWidthPx || state.headWidthPx,
                     playerWidthPx: event.playerWidthPx || state.playerWidthPx,
                     playerMode: event.playerMode || state.playerMode
+                    ,recentChannelIds: event.recentChannelIds || state.recentChannelIds
                 }),
                 effects
             };
@@ -809,7 +818,11 @@ export function reduce(state, event) {
             if (isLive) {
                 const repeat = state.liveClickCandidate?.channelId === event.channelId && state.liveClickCandidate?.startMs === program.startMs;
                 if (repeat) return { state: { ...state, liveClickCandidate: null, focus: { channelId: event.channelId, timeMs: program.startMs, source: 'sticky' } }, effects };
-                const tuned = reduce(state, { type: Events.TUNE, channelId: event.channelId });
+                const tuned = reduce(state, {
+                    type: Events.TUNE,
+                    channelId: event.channelId,
+                    scrollIntoView: false
+                });
                 return {
                     ...tuned,
                     state: {

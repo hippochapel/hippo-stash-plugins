@@ -545,6 +545,16 @@ describe('overlay', () => {
             expect(overlay.element.querySelector('.tvguide-grid .tvguide-typebar')).toBeNull();
         });
 
+        it('pins every control after Search to the toolbar’s right edge', () => {
+            const { overlay } = mountOverlay(mixedState());
+            const right = overlay.element.querySelector('.tvguide-toolbar-right');
+
+            expect(right).not.toBeNull();
+            expect(right.contains(overlay.element.querySelector('.tvguide-typebar'))).toBe(true);
+            expect(right.contains(overlay.element.querySelector('.tvguide-recent'))).toBe(true);
+            expect(right.contains(overlay.element.querySelector('.tvguide-close'))).toBe(true);
+        });
+
         it('puts the whole toolbar below the scene details', () => {
             const { overlay } = mountOverlay(mixedState());
             const children = [...overlay.element.children].map((n) => n.className);
@@ -635,6 +645,22 @@ describe('overlay', () => {
         const { store, overlay } = mountOverlay(baseState({ windowStartMs: DAY_START }));
         overlay.element.querySelector('.tvguide-now').click();
         expect(store.getState().windowStartMs).toBeGreaterThan(DAY_START);
+    });
+
+    it('opens Recent directly below the toolbar and loads uncached channel schedules', () => {
+        const { store, overlay } = mountOverlay(baseState({ recentChannelIds: ['studio:2', 'studio:1'] }));
+        const button = overlay.element.querySelector('.tvguide-recent');
+        const panel = overlay.element.querySelector('.tvguide-recent-panel');
+
+        expect(panel.closest('.tvguide-topbar')).not.toBeNull();
+        expect(button.dataset.icon).toBe('history');
+        expect(panel.hidden).toBe(true);
+
+        button.click();
+
+        expect(panel.hidden).toBe(false);
+        expect(panel.textContent).toContain('Channel One');
+        expect(store.getState().pools['studio:2'].status).toBe(PoolStatus.LOADING);
     });
 
     it('toggles mute from the player controls', () => {

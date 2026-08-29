@@ -267,12 +267,40 @@ body.stash-tvguide-active {
     border-top: 1px solid var(--tvguide-border);
     border-bottom: 1px solid var(--tvguide-border);
     background: var(--tvguide-surface);
+    position: relative;
 }
 
 .tvguide-topbar .tvguide-close {
     margin-left: 4px;
     flex: 0 0 auto;
 }
+.tvguide-toolbar-right {
+    position: relative;
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-left: auto;
+}
+.tvguide-recent-panel {
+    position: absolute;
+    z-index: 5;
+    top: 100%;
+    right: 0;
+    min-width: 300px;
+    max-height: 50vh;
+    max-height: 50dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 6px;
+    border: 1px solid var(--tvguide-border);
+    background: var(--tvguide-surface);
+    box-shadow: 0 6px 18px rgba(0,0,0,.35);
+}
+.tvguide-recent-row { display: grid; grid-template-columns: 32px minmax(90px, 1fr) minmax(120px, 2fr); align-items: center; gap: 8px; width: 100%; text-align: left; }
+.tvguide-recent-row .tvguide-logo { width: 28px; height: 28px; }
+.tvguide-recent-name, .tvguide-recent-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The chips select a grouping; everything after them acts on the guide. Without
    a rule between them, "Current" read as one more grouping -- and a border on
@@ -296,6 +324,7 @@ body.stash-tvguide-active {
     color: var(--tvguide-text-dim);
     font-size: 12px;
 }
+.tvguide-toolbar-right .tvguide-status { margin-left: 0; }
 
 .tvguide-overlay button {
     min-height: 32px;

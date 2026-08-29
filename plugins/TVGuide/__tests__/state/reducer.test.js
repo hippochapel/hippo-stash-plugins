@@ -466,12 +466,24 @@ describe('TUNE', () => {
     it('switches channel, remembers it, and announces the change', () => {
         const { state, effects } = run(readyState(), { type: Events.TUNE, channelId: 'studio:2' });
         expect(state.tunedChannelId).toBe('studio:2');
+        expect(state.guideScrollChannelId).toBe('studio:2');
         expect(effects).toContainEqual({
             type: 'persist',
             key: STORAGE_KEYS.tunedChannel,
             value: 'studio:2'
         });
         expect(effectTypes(effects)).toContain('announce');
+    });
+
+    it('does not scroll the guide for a direct guide-row tune', () => {
+        const { state } = run(readyState(), {
+            type: Events.TUNE,
+            channelId: 'studio:2',
+            scrollIntoView: false
+        });
+
+        expect(state.tunedChannelId).toBe('studio:2');
+        expect(state.guideScrollChannelId).toBeNull();
     });
 
     it('names the programme in the announcement when there is one', () => {

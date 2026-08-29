@@ -19,6 +19,7 @@ import { createList } from './list.js';
 import { trapFocus } from './a11y.js';
 import { createManager } from './manager.js';
 import { createPlayer } from './player.js';
+import { logoBadge } from './logoBadge.js';
 
 const TYPE_LABELS = { ...SOURCE_LABELS, [PINNED_GROUP]: 'Pinned' };
 
@@ -103,6 +104,23 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     });
 
     const stage = el('div', { class: 'tvguide-stage' });
+    const recentPanel = el('div', { class: 'tvguide-recent-panel', hidden: true });
+    const recentButton = el('button', {
+        class: 'tvguide-recent',
+        type: 'button',
+        'aria-label': 'Recent channels',
+        title: 'Recent channels',
+        onclick: () => {
+            const opening = recentPanel.hidden;
+            recentPanel.hidden = !opening;
+            if (opening) {
+                (store.getState().recentChannelIds || []).forEach((channelId) =>
+                    store.dispatch({ type: Events.POOL_REQUESTED, channelId })
+                );
+            }
+        }
+    });
+    setIcon(recentButton, 'history');
 
     const helpPanel = el(
         'div',
@@ -118,13 +136,13 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         )
     );
 
-    const topbar = el(
+    const toolbarRight = el(
         'div',
-        { class: 'tvguide-topbar' },
-        timeControls,
-        searchBox,
+        { class: 'tvguide-toolbar-right' },
         typeBar,
         el('span', { class: 'tvguide-toolbar-divider', 'aria-hidden': 'true' }),
+        recentButton,
+        recentPanel,
         el('button', {
             class: 'tvguide-jump',
             type: 'button',
@@ -149,6 +167,14 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             text: '\u00d7',
             onclick: () => close()
         })
+    );
+
+    const topbar = el(
+        'div',
+        { class: 'tvguide-topbar' },
+        timeControls,
+        searchBox,
+        toolbarRight
     );
 
     const root = el(
@@ -267,6 +293,11 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             if (guideSearch.value !== state.guideSearch) guideSearch.value = state.guideSearch;
             searchClear.hidden = state.guideSearch === '';
             renderTypeBar(state);
+            const recent = sel.recentChannels(state);
+            replaceChildren(recentPanel, recent.length ? recent.map(({ channel, program }) =>
+                el('button', { class: 'tvguide-recent-row', type: 'button', onclick: () => { store.dispatch({ type: Events.TUNE, channelId: channel.id }); recentPanel.hidden = true; } },
+                    logoBadge(channel), el('span', { class: 'tvguide-recent-name' }, channel.name), el('span', { class: 'tvguide-recent-now' }, program?.scene?.title || 'Nothing scheduled'))
+            ) : el('p', { class: 'tvguide-recent-empty' }, 'No recent channels.'));
 
             banner.render(state);
             view.render(state);

@@ -7,3 +7,11 @@ describe('short-scene dividers', () => {
         expect(styles).toMatch(/\.tvguide-block-divider\s*\{[^}]*top:\s*4px;[^}]*bottom:\s*4px;/s);
     });
 });
+
+describe('Recent panel', () => {
+    it('keeps long channel histories inside a scrollable viewport', () => {
+        expect(styles).toMatch(
+            /\.tvguide-recent-panel\s*\{[^}]*max-height:\s*50dvh;[^}]*overflow-y:\s*auto;/s
+        );
+    });
+});

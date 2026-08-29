@@ -111,7 +111,7 @@ export function createList({ store, onRowVisible }) {
                                 channelId,
                                 timeMs: live ? live.startMs : state.nowMs
                             });
-                            store.dispatch({ type: Events.TUNE, channelId });
+                            store.dispatch({ type: Events.TUNE, channelId, scrollIntoView: false });
                         }
                     },
                     el(

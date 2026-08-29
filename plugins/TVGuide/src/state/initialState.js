@@ -48,6 +48,7 @@ export function createInitialState() {
         guideScrollChannelId: null,
 
         tunedChannelId: null,
+        recentChannelIds: [],
         // Storage is read before the lineup has resolved, so this keeps a
         // remembered channel until CHANNELS_LOADED can validate it.
         pendingRestoredChannelId: null,
