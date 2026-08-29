@@ -52,6 +52,7 @@ export function createInitialState() {
         // remembered channel until CHANNELS_LOADED can validate it.
         pendingRestoredChannelId: null,
         focus: null,
+        liveClickCandidate: null,
         muted: true,
 
         // Player

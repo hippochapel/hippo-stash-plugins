@@ -24,6 +24,7 @@
 import { el, replaceChildren } from './dom.js';
 import { formatClock } from '../domain/format.js';
 import { sceneTitle } from '../api/scenes.js';
+import { programAt } from '../domain/schedule.js';
 import { PINNED_GROUP } from '../domain/channelPrefs.js';
 import { SOURCE_LABELS } from '../domain/lineup.js';
 import { Events } from '../state/actions.js';
@@ -365,7 +366,15 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
 
             row.classList.toggle('tvguide-row-tuned', channelId === state.tunedChannelId);
 
-            const signature = [status, state.windowStartMs, sel.windowMs(state), state.dayKey].join('|');
+            const live = sel.liveProgram(state, channelId);
+            const signature = [
+                status,
+                state.windowStartMs,
+                sel.windowMs(state),
+                state.dayKey,
+                live?.startMs || '',
+                live?.endMs || ''
+            ].join('|');
             if (track.dataset.signature === signature) {
                 restyleBlocks(state, channelId, track);
                 continue;
@@ -382,7 +391,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     }
 
     function renderTrack(state, channelId, track) {
-        const blocks = sel.rowBlocks(state, channelId);
+        const blocks = sel.rowPresentationBlocks(state, channelId);
         if (blocks.length === 0) {
             replaceChildren(track, el('div', { class: 'tvguide-row-empty' }, 'No programming'));
             return;
@@ -391,8 +400,13 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         replaceChildren(track, blocks.map((block) => renderBlock(channelId, block)));
     }
 
-    function renderBlock(channelId, { program, rect, isLive, isFocused }) {
-        const label = `${sceneTitle(program.scene)}, ${formatClock(program.startMs)} to ${formatClock(program.endMs)}`;
+    function renderBlock(channelId, { program, programs, rect, isLive, isFocused, title, dividerPct = [] }) {
+        const activeProgram = isLive
+            ? programAt(store.getState().schedules[channelId], store.getState().nowMs, store.getState().dayStartMs)
+            : null;
+        const displayTitle = activeProgram ? sceneTitle(activeProgram.scene) : title;
+        const endMs = programs[programs.length - 1].endMs;
+        const label = `${displayTitle}, ${formatClock(program.startMs)} to ${formatClock(endMs)}`;
 
         const block = el(
             'div',
@@ -411,9 +425,9 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                 'aria-label': label,
                 'aria-selected': isFocused ? 'true' : 'false',
                 'data-start-ms': String(program.startMs),
-                'data-end-ms': String(program.endMs),
+                'data-end-ms': String(endMs),
                 style: { left: `${rect.leftPct}%`, width: `${rect.widthPct}%` },
-                onclick: () => activate(channelId, program),
+                onclick: () => activate(channelId, isLive ? programAt(store.getState().schedules[channelId], store.getState().nowMs, store.getState().dayStartMs) : program),
                 onfocus: () => {
                     // Our own `adoptFocus` triggers this too; recording that as
                     // a keyboard focus would upgrade a hover into something the
@@ -436,7 +450,8 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                     });
                 }
             },
-            el('span', { class: 'tvguide-block-title' }, sceneTitle(program.scene)),
+            dividerPct.map((pct) => el('span', { class: 'tvguide-block-divider', style: { left: `${pct}%` } })),
+            el('span', { class: 'tvguide-block-title' }, displayTitle),
             el('span', { class: 'tvguide-block-time' }, formatClock(program.startMs))
         );
 

@@ -7,7 +7,7 @@
 
 import { programAt, scheduleBetween } from '../domain/schedule.js';
 import { COMPARATORS, DEFAULT_SORT, PINNED_GROUP } from '../domain/channelPrefs.js';
-import { programRect, nowLinePct, timeTicks, HALF_HOUR_MS } from '../domain/layout.js';
+import { programRect, nowLinePct, timeTicks, HALF_HOUR_MS, presentationBlocks } from '../domain/layout.js';
 import { PoolStatus } from './initialState.js';
 
 export const windowMs = (state) => state.settings.guide_window_hours * 3600000;
@@ -138,6 +138,16 @@ export function rowBlocks(state, channelId) {
             program.startMs <= state.focus.timeMs &&
             program.endMs > state.focus.timeMs
     }));
+}
+
+export const rowPresentationBlocks = (state, channelId) =>
+    presentationBlocks(rowBlocks(state, channelId), state.settings.guide_short_scene_minutes);
+
+export function focusedPresentationGroup(state) {
+    const program = focusedProgram(state);
+    if (!program || !state.focus) return null;
+    return rowPresentationBlocks(state, state.focus.channelId)
+        .find((group) => group.programs.some((member) => member.startMs === program.startMs)) || null;
 }
 
 /** The programme the detail banner describes: whatever has keyboard focus. */

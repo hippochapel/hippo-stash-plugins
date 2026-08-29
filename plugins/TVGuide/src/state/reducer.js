@@ -494,6 +494,7 @@ export function reduce(state, event) {
             };
 
         case Events.FOCUS_CELL:
+            if (event.source === 'hover' && state.focus?.source === 'sticky') return { state, effects };
             return {
                 state: {
                     ...state,
@@ -802,18 +803,35 @@ export function reduce(state, event) {
             if (!program) return { state, effects };
 
             const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
+            if (event.forcePin) {
+                return { state: { ...state, liveClickCandidate: null, focus: { channelId: event.channelId, timeMs: program.startMs, source: 'sticky' } }, effects };
+            }
             if (isLive) {
-                return reduce(state, { type: Events.TUNE, channelId: event.channelId });
+                const repeat = state.liveClickCandidate?.channelId === event.channelId && state.liveClickCandidate?.startMs === program.startMs;
+                if (repeat) return { state: { ...state, liveClickCandidate: null, focus: { channelId: event.channelId, timeMs: program.startMs, source: 'sticky' } }, effects };
+                const tuned = reduce(state, { type: Events.TUNE, channelId: event.channelId });
+                return {
+                    ...tuned,
+                    state: {
+                        ...tuned.state,
+                        liveClickCandidate: { channelId: event.channelId, startMs: program.startMs },
+                        focus: { channelId: event.channelId, timeMs: program.startMs, source: 'live' }
+                    }
+                };
             }
 
             return {
                 state: {
                     ...state,
+                    liveClickCandidate: null,
                     focus: { channelId: event.channelId, timeMs: program.startMs, source: 'sticky' }
                 },
                 effects
             };
         }
+
+        case Events.UNPIN_DETAILS:
+            return reduce({ ...state, liveClickCandidate: null, focus: { ...state.focus, source: 'hover' } }, { type: Events.FOCUS_LIVE });
 
         case Events.RESUME_AFTER_HIDDEN: {
             // Returning from another app leaves the element paused with no event

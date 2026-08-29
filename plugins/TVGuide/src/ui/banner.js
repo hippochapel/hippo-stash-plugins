@@ -50,6 +50,15 @@ export function createBanner({ store } = {}) {
         );
     }
 
+    function featuringSection(group) {
+        if (!group || group.programs.length < 2) return null;
+        return el('section', { class: 'tvguide-featuring', 'aria-label': 'Featuring' },
+            el('span', { class: 'tvguide-related-label' }, 'Featuring'),
+            el('span', { class: 'tvguide-related-items' }, group.programs.map((program) =>
+                el('button', { class: 'tvguide-related-chip', type: 'button', 'aria-label': `Pin ${sceneTitle(program.scene)} details`,
+                    onclick: () => store?.dispatch({ type: Events.PIN_DETAILS, channelId: store.getState().focus.channelId, timeMs: program.startMs, forcePin: true }) }, sceneTitle(program.scene)))));
+    }
+
     /**
      * Leaving for Stash belongs beside the scene it opens.
      *
@@ -115,6 +124,7 @@ export function createBanner({ store } = {}) {
             }
 
             const { scene } = program;
+            const group = sel.focusedPresentationGroup(state);
             const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
             const scrollKey = `${channel.id}:${scene.id}`;
             const previousBody = root.querySelector('.tvguide-banner-body');
@@ -146,6 +156,7 @@ export function createBanner({ store } = {}) {
                         'div',
                         { class: 'tvguide-banner-heading' },
                         el('h2', { class: 'tvguide-banner-title' }, sceneTitle(scene)),
+                        state.focus?.source === 'sticky' ? el('button', { class: 'tvguide-unpin-details', type: 'button', 'aria-label': 'Unpin details', title: 'Return to live details', onclick: () => store?.dispatch({ type: Events.UNPIN_DETAILS }) }, '×') : null,
                         isLive ? el('span', { class: 'tvguide-live-badge' }, 'LIVE') : null
                     ),
                     el(
@@ -155,6 +166,7 @@ export function createBanner({ store } = {}) {
                         ` · ${formatDuration(program.durationMs / 1000)}`,
                         isLive ? ` · ${formatRemaining(program.endMs - state.nowMs)}` : ''
                     ),
+                    featuringSection(group),
                     scene.details
                         ? el('p', { class: 'tvguide-banner-details' }, scene.details)
                         : null,

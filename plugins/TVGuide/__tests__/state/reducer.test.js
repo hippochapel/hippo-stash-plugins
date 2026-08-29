@@ -1328,6 +1328,16 @@ describe('clicking a programme', () => {
         expect(effectTypes(effects)).toContain('tuneViewer');
     });
 
+    it('leaves live details unpinned until the live block is clicked again', () => {
+        const { state } = run(readyState(), {
+            type: Events.PIN_DETAILS,
+            channelId: 'studio:1',
+            timeMs: NOON
+        });
+
+        expect(state.focus.source).toBe('live');
+    });
+
     it('tuning moves the details onto what is now playing', () => {
         // Otherwise clicking back to a live scene left the details describing
         // the programme you had pinned.

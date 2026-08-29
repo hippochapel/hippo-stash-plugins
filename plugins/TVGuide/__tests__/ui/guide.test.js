@@ -173,6 +173,51 @@ describe('the now-line', () => {
     });
 });
 
+describe('dense upcoming scenes', () => {
+    it('groups short scenes by their duration, not the track width', () => {
+        const nativeResizeObserver = global.ResizeObserver;
+        const nativeClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+        let width = 100;
+        let onResize;
+
+        global.ResizeObserver = class {
+            constructor(callback) {
+                onResize = callback;
+            }
+            observe() {}
+            disconnect() {}
+        };
+        Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+            configurable: true,
+            get() {
+                return this.classList?.contains('tvguide-row-track') ? width : 0;
+            }
+        });
+
+        try {
+            const dense = scenes(4, 4);
+            const schedule = buildDaySchedule('studio:1', dense, DAY_KEY);
+            const { grid } = mount({
+                settings: { ...createInitialState().settings, guide_window_hours: 1 },
+                allChannels: [chan('studio:1', 'Alpha')],
+                pools: { 'studio:1': { status: PoolStatus.READY, scenes: dense, error: null } },
+                schedules: { 'studio:1': schedule }
+            });
+            const track = grid.element.querySelector('[data-channel-id="studio:1"] .tvguide-row-track');
+
+            expect(track.querySelectorAll('.tvguide-block-live')).toHaveLength(1);
+            expect(track.querySelectorAll('.tvguide-block')).toHaveLength(1);
+            expect(track.querySelectorAll('.tvguide-block-divider')).toHaveLength(14);
+            expect(track.querySelector('.tvguide-block-title').textContent).toBe('Scene 2');
+        } finally {
+            if (nativeResizeObserver === undefined) delete global.ResizeObserver;
+            else global.ResizeObserver = nativeResizeObserver;
+            if (nativeClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', nativeClientWidth);
+            else delete HTMLElement.prototype.clientWidth;
+        }
+    });
+});
+
 describe('the A-Z rail', () => {
     /**
      * jsdom lays nothing out, so give the grid a geometry to scroll through.

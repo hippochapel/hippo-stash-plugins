@@ -36,6 +36,10 @@ settings:
     displayName: Short Maximum Length (minutes)
     description: "Scenes shorter than this are included in the Shorts channel. Default 5."
     type: NUMBER
+  guide_short_scene_minutes:
+    displayName: Short Scene Grouping (minutes)
+    description: "Consecutive scenes shorter than this appear as one guide block. Default 15."
+    type: NUMBER
   guide_autoplay:
     displayName: Autoplay Preview
     description: "Play the tuned channel in the corner viewer. Disable for a guide-only, no-video view."

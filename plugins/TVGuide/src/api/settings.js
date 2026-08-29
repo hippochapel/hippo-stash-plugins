@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS = {
     guide_recently_added_days: 14,
     guide_movie_min_minutes: 90,
     guide_short_max_minutes: 5,
+    guide_short_scene_minutes: 15,
     guide_autoplay: true,
     guide_start_muted: true,
     guide_navbar_button: true
@@ -29,7 +30,8 @@ const NUMBER_BOUNDS = {
     guide_new_release_days: { min: 0, max: 3650 },
     guide_recently_added_days: { min: 0, max: 3650 },
     guide_movie_min_minutes: { min: 1, max: 1440 },
-    guide_short_max_minutes: { min: 1, max: 1440 }
+    guide_short_max_minutes: { min: 1, max: 1440 },
+    guide_short_scene_minutes: { min: 1, max: 30 }
 };
 
 const SETTINGS_QUERY = `query TVGuideConfiguration { configuration { plugins } }`;

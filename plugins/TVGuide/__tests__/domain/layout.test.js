@@ -2,6 +2,7 @@ import {
     HALF_HOUR_MS,
     snapToStep,
     programRect,
+    presentationBlocks,
     nowLinePct,
     timeTicks,
     clampWindowStart
@@ -82,6 +83,60 @@ describe('programRect', () => {
             expect(r.widthPct).toBeGreaterThanOrEqual(0);
             expect(r.leftPct + r.widthPct).toBeLessThanOrEqual(100.000001);
         }
+    });
+});
+
+describe('presentationBlocks', () => {
+    const block = (title, leftPct, widthPct, { isLive = false, isFocused = false } = {}) => ({
+        program: { scene: { title }, startMs: leftPct, endMs: leftPct + widthPct },
+        rect: { leftPct, widthPct, clippedStart: false, clippedEnd: false },
+        isLive,
+        isFocused
+    });
+
+    it('keeps an upcoming scene individual when its title has usable space', () => {
+        const readable = block('Readable scene', 0, 20);
+
+        expect(presentationBlocks([readable], 1)).toEqual([
+            expect.objectContaining({ program: readable.program, programs: [readable.program], title: 'Readable scene' })
+        ]);
+    });
+
+    it('groups a narrow upcoming scene with the next scene', () => {
+        const first = block('First scene', 0, 5);
+        const second = block('Second scene', 5, 15);
+
+        expect(presentationBlocks([first, second], 1)).toEqual([
+            expect.objectContaining({
+                program: first.program,
+                programs: [first.program, second.program],
+                title: 'First scene, Second scene',
+                rect: expect.objectContaining({ leftPct: 0, widthPct: 20 })
+            })
+        ]);
+    });
+
+    it('keeps extending a dense upcoming group until its label has usable space', () => {
+        const first = block('First', 0, 4);
+        const second = block('Second', 4, 4);
+        const third = block('Third', 8, 12);
+
+        expect(presentationBlocks([first, second, third], 1)).toEqual([
+            expect.objectContaining({
+                programs: [first.program, second.program, third.program],
+                title: 'First, Second, and 1 more',
+                rect: expect.objectContaining({ leftPct: 0, widthPct: 20 })
+            })
+        ]);
+    });
+
+    it('groups a live scene when its full duration is short', () => {
+        const live = block('Live scene', 0, 4, { isLive: true });
+        const future = block('Future scene', 4, 20);
+
+        expect(presentationBlocks([live, future], 1)).toEqual([
+            expect.objectContaining({ program: live.program, programs: [live.program, future.program], title: 'Live scene, Future scene', isLive: true })
+        ]);
     });
 });
 

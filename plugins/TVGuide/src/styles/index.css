@@ -440,7 +440,7 @@ body.stash-tvguide-active {
     bottom: 0;
     width: 1px;
     background: var(--tvguide-border);
-    opacity: 0.5;
+    opacity: 0.25;
 }
 
 .tvguide-nowline {
@@ -509,6 +509,7 @@ body.stash-tvguide-active {
 }
 
 .tvguide-block-live { border-color: var(--tvguide-live); }
+.tvguide-block-divider { position: absolute; top: 4px; bottom: 4px; width: 1px; background: var(--tvguide-accent); opacity: 0.65; pointer-events: none; }
 .tvguide-block-focused { background: var(--tvguide-surface-2); border-color: var(--tvguide-accent); }
 
 /* A clipped edge means the programme continues past the window rather than
