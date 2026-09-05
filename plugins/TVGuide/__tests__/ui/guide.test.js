@@ -498,3 +498,16 @@ describe('leaving the grid', () => {
         expect(store.getState().focus.timeMs).toBe(moved);
     });
 });
+
+describe('pinned channel letter navigation', () => {
+    it('clears the letters for pinned channels and restores them for alphabetical groups', () => {
+        const { store } = mount({ pinOrder: ['studio:1'] });
+        const rail = createChannelRail({ store, onJump: jest.fn() });
+        rail.render(store.getState(), 'studio');
+        expect(rail.element.querySelectorAll('button').length).toBeGreaterThan(0);
+        rail.render(store.getState(), 'pinned');
+        expect(rail.element.querySelectorAll('button')).toHaveLength(0);
+        rail.render(store.getState(), 'studio');
+        expect(rail.element.querySelectorAll('button').length).toBeGreaterThan(0);
+    });
+});

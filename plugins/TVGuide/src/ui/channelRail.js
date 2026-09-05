@@ -8,6 +8,7 @@
  */
 
 import { el, replaceChildren } from './dom.js';
+import { PINNED_GROUP } from '../domain/channelPrefs.js';
 import * as sel from '../state/selectors.js';
 
 export function createChannelRail({ store, onJump }) {
@@ -24,7 +25,7 @@ export function createChannelRail({ store, onJump }) {
         element: root,
 
         render(state, groupKey) {
-            const letters = groupKey ? sel.groupLetters(state, groupKey) : [];
+            const letters = groupKey && groupKey !== PINNED_GROUP ? sel.groupLetters(state, groupKey) : [];
             const signature = `${groupKey || ''}|${letters.join('')}`;
             if (signature === rendered) return;
             rendered = signature;

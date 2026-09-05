@@ -86,10 +86,9 @@ per source with a count. Within a group you sort by name or scene count.
 
 Hand-ordering 119 channels is not workable, so finding things is done with:
 a **search box**, a **grouping dropdown** built from the sources you actually have, an
-**A–Z rail** beside the channel column (which switches to name sort, since a
-letter means nothing in any other order), and a **jump to current** button.
-Selecting a grouping expands it if collapsed. A short current date appears to
-the left of the guide times.
+**A–Z rail** beside the channel column for the current source group, and a
+**jump to current** button. Selecting a grouping expands it if collapsed. A short
+current date appears to the left of the guide times. The rail has no letters in the custom-ordered Pinned group.
 
 **Pins** sit in their own group at the top and are drag-reorderable, or moved
 with the keyboard. The channel column uses a fixed default width of 200px.
