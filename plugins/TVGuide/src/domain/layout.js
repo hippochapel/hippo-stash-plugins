@@ -8,6 +8,8 @@
  * No DOM, no I/O.
  */
 
+import { formatClock } from './format.js';
+
 export const HALF_HOUR_MS = 1800000;
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
@@ -119,23 +121,19 @@ export function nowLinePct(nowMs, windowStartMs, windowMs) {
 }
 
 /** Clock labels along the top of the grid, aligned to `stepMs` boundaries. */
-export function timeTicks(windowStartMs, windowMs, stepMs) {
+export function timeTicks(windowStartMs, windowMs, stepMs, use12Hour = false) {
     const ticks = [];
     const first = Math.ceil(windowStartMs / stepMs) * stepMs;
     for (let t = first; t < windowStartMs + windowMs; t += stepMs) {
         ticks.push({
             ms: t,
             leftPct: ((t - windowStartMs) / windowMs) * 100,
-            label: formatTick(t)
+            label: formatClock(t, use12Hour)
         });
     }
     return ticks;
 }
 
-function formatTick(ms) {
-    const d = new Date(ms);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
 
 /**
  * Keep panning inside a sane range.

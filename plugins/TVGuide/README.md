@@ -143,6 +143,7 @@ made by media query, not touch capability, so tablets keep the grid.
 |---|---|---|
 | `guide_min_scenes` | 5 | Sources below this become no channel |
 | `guide_window_hours` | 3 | Hours visible in the grid at once |
+| `guide_12_hour_clock` | off | Show AM/PM times throughout the guide; reload after changing |
 | `guide_pool_cap` | 100 | Scenes drawn into a channel's schedule |
 | `guide_new_release_days` | 30 | Release-date age for New releases |
 | `guide_recently_added_days` | 14 | Library-added age for Recently added |

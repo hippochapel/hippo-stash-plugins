@@ -1,6 +1,13 @@
 import { formatClock, formatDuration, formatRemaining, monogram } from '../../src/domain/format.js';
 
 describe('formatClock', () => {
+    it.each([
+        [0, 0, '12:00 AM'], [0, 5, '12:05 AM'], [9, 5, '9:05 AM'],
+        [12, 0, '12:00 PM'], [15, 30, '3:30 PM'], [23, 59, '11:59 PM']
+    ])('renders %i:%i on a 12-hour clock as %s', (hour, minute, expected) => {
+        expect(formatClock(new Date(2026, 7, 22, hour, minute).getTime(), true)).toBe(expected);
+    });
+
     it('renders 24-hour time zero-padded', () => {
         expect(formatClock(new Date(2026, 7, 22, 9, 5).getTime())).toBe('09:05');
         expect(formatClock(new Date(2026, 7, 22, 15, 30).getTime())).toBe('15:30');

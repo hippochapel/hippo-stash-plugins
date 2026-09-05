@@ -398,7 +398,7 @@ export function createPlayer({ store, viewer }) {
                 'p',
                 { class: 'tvguide-player-times' },
                 `${formatDuration(program.elapsedMs / 1000)} / ${formatDuration(program.durationMs / 1000)}`,
-                ` · ends ${formatClock(program.endMs)}`,
+                ` · ends ${formatClock(program.endMs, state.settings.guide_12_hour_clock)}`,
                 ` · ${formatRemaining(program.endMs - nowMs)}`
             )
         );

@@ -380,6 +380,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             const signature = [
                 status,
                 state.windowStartMs,
+                state.settings.guide_12_hour_clock,
                 sel.windowMs(state),
                 state.dayKey,
                 live?.startMs || '',
@@ -407,16 +408,16 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             return;
         }
 
-        replaceChildren(track, blocks.map((block) => renderBlock(channelId, block)));
+        replaceChildren(track, blocks.map((block) => renderBlock(state, channelId, block)));
     }
 
-    function renderBlock(channelId, { program, programs, rect, isLive, isFocused, title, dividerPct = [] }) {
+    function renderBlock(state, channelId, { program, programs, rect, isLive, isFocused, title, dividerPct = [] }) {
         const activeProgram = isLive
             ? programAt(store.getState().schedules[channelId], store.getState().nowMs, store.getState().dayStartMs)
             : null;
         const displayTitle = activeProgram ? sceneTitle(activeProgram.scene) : title;
         const endMs = programs[programs.length - 1].endMs;
-        const label = `${displayTitle}, ${formatClock(program.startMs)} to ${formatClock(endMs)}`;
+        const label = `${displayTitle}, ${formatClock(program.startMs, state.settings.guide_12_hour_clock)} to ${formatClock(endMs, state.settings.guide_12_hour_clock)}`;
 
         const block = el(
             'div',
@@ -462,7 +463,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             },
             dividerPct.map((pct) => el('span', { class: 'tvguide-block-divider', style: { left: `${pct}%` } })),
             el('span', { class: 'tvguide-block-title' }, displayTitle),
-            el('span', { class: 'tvguide-block-time' }, formatClock(program.startMs))
+            el('span', { class: 'tvguide-block-time' }, formatClock(program.startMs, state.settings.guide_12_hour_clock))
         );
 
         if (isFocused) adoptFocus(block);

@@ -165,7 +165,7 @@ export function createBanner({ store } = {}) {
                     el(
                         'p',
                         { class: 'tvguide-banner-meta' },
-                        `${channel.name} · ${formatClock(program.startMs)}–${formatClock(program.endMs)}`,
+                        `${channel.name} · ${formatClock(program.startMs, state.settings.guide_12_hour_clock)}–${formatClock(program.endMs, state.settings.guide_12_hour_clock)}`,
                         ` · ${formatDuration(program.durationMs / 1000)}`,
                         isLive ? ` · ${formatRemaining(program.endMs - state.nowMs)}` : ''
                     ),

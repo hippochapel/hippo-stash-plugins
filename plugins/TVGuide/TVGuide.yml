@@ -16,6 +16,10 @@ settings:
     displayName: Guide Window (hours)
     description: "How many hours of programming the guide grid shows at once. Default 3."
     type: NUMBER
+  guide_12_hour_clock:
+    displayName: Use 12-Hour Clock
+    description: "Show times with AM/PM throughout TV Guide. Disabled by default (24-hour time). Reload the page after changing this setting."
+    type: BOOLEAN
   guide_pool_cap:
     displayName: Scenes Per Channel
     description: "Maximum scenes drawn into a channel's schedule. Lower values load faster on large libraries. Default 100."

@@ -169,7 +169,7 @@ export function createList({ store, onRowVisible }) {
                 'span',
                 { class: 'tvguide-list-times' },
                 `${formatRemaining(live.endMs - state.nowMs)}`,
-                next ? ` · Next ${formatClock(next.startMs)}: ${sceneTitle(next.scene)}` : ''
+                next ? ` · Next ${formatClock(next.startMs, state.settings.guide_12_hour_clock)}: ${sceneTitle(next.scene)}` : ''
             )
         );
     }

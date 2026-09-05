@@ -528,6 +528,22 @@ describe('overlay', () => {
             ...overrides
         });
 
+    it('uses the clock preference throughout the guide, details, player and mobile list', () => {
+        const state = baseState();
+        state.settings = { ...state.settings, guide_12_hour_clock: true };
+        const { store, overlay } = mountOverlay(state);
+        expect(overlay.element.querySelector('.tvguide-tick').textContent).toBe('12:00 PM');
+        expect(overlay.element.querySelector('.tvguide-block-time').textContent).toMatch(/PM$/);
+        expect(overlay.element.querySelector('.tvguide-block').getAttribute('aria-label')).toContain('PM');
+        expect(overlay.element.querySelector('.tvguide-banner-meta').textContent).toContain('PM');
+        expect(overlay.element.querySelector('.tvguide-player-times').textContent).toMatch(/ends .* PM/);
+        const list = createList({ store, onRowVisible: jest.fn() });
+        list.render({ ...state, layout: 'list' });
+        expect(list.element.querySelector('.tvguide-list-times').textContent).toMatch(/Next .* PM/);
+        list.destroy();
+        overlay.destroy();
+    });
+
     it('consumes a saved-channel scroll target after rendering its guide row', () => {
         const { store, overlay } = mountOverlay(baseState({ guideScrollChannelId: 'studio:1' }));
         expect(overlay.element.querySelector('[data-channel-id="studio:1"]')).not.toBeNull();

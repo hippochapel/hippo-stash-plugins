@@ -11,6 +11,7 @@ export const PLUGIN_ID = 'TVGuide';
 export const DEFAULT_SETTINGS = {
     guide_min_scenes: 5,
     guide_window_hours: 3,
+    guide_12_hour_clock: false,
     guide_pool_cap: 100,
     guide_new_release_days: 30,
     guide_recently_added_days: 14,

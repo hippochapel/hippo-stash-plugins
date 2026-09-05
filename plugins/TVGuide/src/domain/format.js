@@ -1,15 +1,13 @@
-/**
- * Display formatting. Pure, and deliberately locale-independent: the guide is
- * a grid of aligned clock labels, so a fixed 24-hour format keeps every column
- * the same width regardless of where the browser thinks it is.
- */
+/** Display formatting with explicit clock preferences, independent of locale. */
 
 const pad = (n) => String(n).padStart(2, '0');
 
-/** Wall-clock time as HH:MM. */
-export function formatClock(ms) {
+/** Local wall-clock time, optionally using a 12-hour clock with AM/PM. */
+export function formatClock(ms, use12Hour = false) {
     const d = new Date(ms);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const hours = d.getHours();
+    if (use12Hour) return `${hours % 12 || 12}:${pad(d.getMinutes())} ${hours < 12 ? 'AM' : 'PM'}`;
+    return `${pad(hours)}:${pad(d.getMinutes())}`;
 }
 
 /** Runtime as m:ss, widening to h:mm:ss only when it has to. */

@@ -63,6 +63,12 @@ describe('normalizeSettings', () => {
         expect(normalizeSettings({ guide_autoplay: false }).guide_autoplay).toBe(false);
     });
 
+    it('defaults to 24-hour time and accepts the 12-hour clock preference', () => {
+        expect(normalizeSettings({}).guide_12_hour_clock).toBe(false);
+        expect(normalizeSettings({ guide_12_hour_clock: true }).guide_12_hour_clock).toBe(true);
+        expect(normalizeSettings({ guide_12_hour_clock: 'true' }).guide_12_hour_clock).toBe(false);
+    });
+
     it('ignores keys it does not know', () => {
         expect(normalizeSettings({ nonsense: 1 })).toEqual(DEFAULT_SETTINGS);
     });

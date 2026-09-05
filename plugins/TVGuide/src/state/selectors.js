@@ -81,7 +81,7 @@ export function firstChannelForLetterInGroup(state, groupKey, letter) {
 }
 
 /** Clock labels across the head of the grid. */
-export const ticks = (state) => timeTicks(state.windowStartMs, windowMs(state), HALF_HOUR_MS);
+export const ticks = (state) => timeTicks(state.windowStartMs, windowMs(state), HALF_HOUR_MS, state.settings.guide_12_hour_clock);
 
 /** Where the now-line sits, or null when now is off-screen. */
 export const nowMarkerPct = (state) => nowLinePct(state.nowMs, state.windowStartMs, windowMs(state));
