@@ -6,3 +6,15 @@ coverage/
 # Build output -- generated from plugins/TVGuide/src by esbuild
 plugins/TVGuide/tvguide.js
 plugins/TVGuide/tvguide.css
+
+# Editor swap/backup files
+*.swp
+*.swo
+*~
+
+# Agent workflow scaffolding -- design specs and task-by-task implementation
+# plans. Kept on disk, out of the repo.
+**/docs/superpowers/
+
+# Personal scratch list, not a project artifact
+plugins/TVGuide/TODO.txt
