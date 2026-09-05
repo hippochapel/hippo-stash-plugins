@@ -917,7 +917,7 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     .tvguide-manager-editor { padding-left: 0; }
 }
 
-/* ---------- guide chrome: type bar, rail, resizer, groups ---------- */
+/* ---------- guide chrome: type bar, rail, groups ---------- */
 
 /* Part of the toolbar now, not a bar of its own. */
 .tvguide-typebar {
@@ -1041,13 +1041,6 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
 }
 
 .tvguide-rail-letter:hover { color: var(--tvguide-accent); }
-
-.tvguide-resizer {
-    flex: 0 0 5px;
-    cursor: col-resize;
-    background: var(--tvguide-border);
-    touch-action: none;
-}
 
 .tvguide-group {
     position: sticky;

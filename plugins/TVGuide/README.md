@@ -92,8 +92,7 @@ Selecting a grouping expands it if collapsed. A short current date appears to
 the left of the guide times.
 
 **Pins** sit in their own group at the top and are drag-reorderable, or moved
-with the keyboard. The channel column itself is resizable by dragging its
-divider (or with arrow keys when it has focus).
+with the keyboard. The channel column uses a fixed default width of 200px.
 
 Per channel you can override the display name, point it at your own logo URL,
 hide it from the guide without removing it from the lineup, and give it its own

@@ -175,7 +175,6 @@ export function start() {
             sort: migrateSort(readStored(storage, STORAGE_KEYS.sort, DEFAULT_SORT)),
             lineup: readLineup(storage, settings),
             collapsedGroups: parseJsonArray(readStored(storage, STORAGE_KEYS.collapsed)),
-            headWidthPx: Number(readStored(storage, STORAGE_KEYS.headWidth)) || undefined,
             playerWidthPx: Number(readStored(storage, STORAGE_KEYS.playerWidth)) || undefined,
             playerMode: readPlayerMode(storage)
             ,recentChannelIds: parseJsonArray(readStored(storage, STORAGE_KEYS.recentChannels))

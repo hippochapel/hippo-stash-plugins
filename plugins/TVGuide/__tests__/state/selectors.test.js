@@ -441,10 +441,9 @@ describe('guide navigation selectors', () => {
     });
 
     it('exposes player and layout state', () => {
-        const s = navState({ playerMode: 'theater', viewerPaused: true, headWidthPx: 260 });
+        const s = navState({ playerMode: 'theater', viewerPaused: true });
         expect(sel.playerMode(s)).toBe('theater');
         expect(sel.isViewerPaused(s)).toBe(true);
-        expect(sel.headWidthPx(s)).toBe(260);
         expect(sel.playerWidthPx(navState({ playerWidthPx: 320 }))).toBe(320);
         expect(sel.guideSearch(navState({ guideSearch: 'x' }))).toBe('x');
         expect(sel.typeFilter(navState({ typeFilter: 'tag' }))).toBe('tag');

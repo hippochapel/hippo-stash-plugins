@@ -31,7 +31,6 @@ export const recentChannels = (state) => (state.recentChannelIds || [])
     .filter(Boolean)
     .map((channel) => ({ channel, program: liveProgram(state, channel.id) }));
 export const isViewerPaused = (state) => state.viewerPaused;
-export const headWidthPx = (state) => state.headWidthPx;
 export const playerWidthPx = (state) => state.playerWidthPx;
 export const guideSearch = (state) => state.guideSearch;
 export const typeFilter = (state) => state.typeFilter;

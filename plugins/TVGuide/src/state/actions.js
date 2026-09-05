@@ -64,7 +64,6 @@ export const Events = {
     // Guide navigation
     GUIDE_SEARCH: 'GUIDE_SEARCH',
     SET_TYPE_FILTER: 'SET_TYPE_FILTER',
-    SET_HEAD_WIDTH: 'SET_HEAD_WIDTH',
     SET_PLAYER_WIDTH: 'SET_PLAYER_WIDTH'
 };
 
@@ -100,7 +99,6 @@ export const STORAGE_KEYS = {
     sort: 'tvguide_sort',
     pinOrder: 'tvguide_pin_order',
     collapsed: 'tvguide_collapsed_groups',
-    headWidth: 'tvguide_head_width',
     playerWidth: 'tvguide_player_width',
     playerMode: 'tvguide_player_mode'
     ,recentChannels: 'tvguide_recent_channels'

@@ -1442,24 +1442,6 @@ describe('returning from another app', () => {
     });
 });
 
-describe('channel column width', () => {
-    it('resizes and persists', () => {
-        const { state, effects } = run(readyState(), { type: Events.SET_HEAD_WIDTH, px: 260 });
-        expect(state.headWidthPx).toBe(260);
-        expect(effects).toEqual([{ type: 'persist', key: STORAGE_KEYS.headWidth, value: '260' }]);
-    });
-
-    it('clamps to a usable range', () => {
-        expect(run(readyState(), { type: Events.SET_HEAD_WIDTH, px: 20 }).state.headWidthPx).toBe(120);
-        expect(run(readyState(), { type: Events.SET_HEAD_WIDTH, px: 9999 }).state.headWidthPx).toBe(480);
-    });
-
-    it('ignores a no-op resize', () => {
-        const state = readyState();
-        expect(run(state, { type: Events.SET_HEAD_WIDTH, px: 200 }).state).toBe(state);
-    });
-});
-
 describe('focus source', () => {
     it('records where the focus came from', () => {
         const hovered = run(readyState(), {

@@ -69,15 +69,6 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         onJump: (channelId) => scrollChannelIntoView(channelId, 'start')
     });
 
-    const resizer = el('div', {
-        class: 'tvguide-resizer',
-        role: 'separator',
-        tabindex: '0',
-        'aria-label': 'Resize channel column',
-        'aria-orientation': 'vertical',
-        onkeydown: onResizerKey
-    });
-
     const root = el(
         'div',
         { class: 'tvguide-grid' },
@@ -85,7 +76,6 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             'div',
             { class: 'tvguide-grid-head' },
             dateLabel,
-            resizer,
             ticksRow
         ),
         // The rail sits alongside the rows, pinned, while they scroll past it.
@@ -128,29 +118,10 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     // frame would re-render the whole grid.
     scroll.addEventListener('scroll', () => syncRail(store.getState()), { passive: true });
 
-    // Pointer drag on the divider. Pointer events cover mouse and touch in one.
-    resizer.addEventListener('pointerdown', (event) => {
-        event.preventDefault();
-        const startX = event.clientX;
-        const startWidth = store.getState().headWidthPx;
-
-        const onMove = (move) =>
-            store.dispatch({ type: Events.SET_HEAD_WIDTH, px: startWidth + (move.clientX - startX) });
-        const onUp = () => {
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
-        };
-
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
-    });
-
     return {
         element: root,
 
         render(state) {
-            root.style.setProperty('--tvguide-head-width', `${state.headWidthPx}px`);
-
             renderTicks(state);
             renderGridlines(state);
             renderNowLine(state);
@@ -562,15 +533,4 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(value) : value.replace(/"/g, '\\"');
     }
 
-    function onResizerKey(event) {
-        const step = event.shiftKey ? 40 : 10;
-        const current = store.getState().headWidthPx;
-        if (event.key === 'ArrowLeft') {
-            event.preventDefault();
-            store.dispatch({ type: Events.SET_HEAD_WIDTH, px: current - step });
-        } else if (event.key === 'ArrowRight') {
-            event.preventDefault();
-            store.dispatch({ type: Events.SET_HEAD_WIDTH, px: current + step });
-        }
-    }
 }

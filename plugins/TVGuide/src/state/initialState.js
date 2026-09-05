@@ -70,7 +70,6 @@ export function createInitialState() {
         guideSearch: '',
         typeFilter: 'all',
         collapsedGroups: [],
-        headWidthPx: 200,
         playerWidthPx: 268,
         sourceOrder: KNOWN_SOURCES,
 

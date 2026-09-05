@@ -554,7 +554,6 @@ export function reduce(state, event) {
                     lineup: event.lineup || state.lineup,
                     pinOrder: event.pinOrder || state.pinOrder,
                     collapsedGroups: event.collapsedGroups || state.collapsedGroups,
-                    headWidthPx: event.headWidthPx || state.headWidthPx,
                     playerWidthPx: event.playerWidthPx || state.playerWidthPx,
                     playerMode: event.playerMode || state.playerMode
                     ,recentChannelIds: event.recentChannelIds || state.recentChannelIds
@@ -614,15 +613,6 @@ export function reduce(state, event) {
             return {
                 state: { ...state, playerWidthPx },
                 effects: [Effects.persist(STORAGE_KEYS.playerWidth, String(playerWidthPx))]
-            };
-        }
-
-        case Events.SET_HEAD_WIDTH: {
-            const headWidthPx = Math.min(480, Math.max(120, Math.round(event.px)));
-            if (headWidthPx === state.headWidthPx) return { state, effects };
-            return {
-                state: { ...state, headWidthPx },
-                effects: [Effects.persist(STORAGE_KEYS.headWidth, String(headWidthPx))]
             };
         }
 

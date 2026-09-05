@@ -373,36 +373,6 @@ describe('the A-Z rail', () => {
     });
 });
 
-describe('the channel column', () => {
-    it('is driven by a width variable the resizer changes', () => {
-        const { store, grid } = mount();
-        expect(grid.element.style.getPropertyValue('--tvguide-head-width')).toBe('200px');
-
-        store.dispatch({ type: Events.SET_HEAD_WIDTH, px: 300 });
-
-        expect(grid.element.style.getPropertyValue('--tvguide-head-width')).toBe('300px');
-    });
-
-    it('resizes from the keyboard', () => {
-        const { store, grid } = mount();
-        const resizer = grid.element.querySelector('.tvguide-resizer');
-
-        resizer.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
-        expect(store.getState().headWidthPx).toBe(210);
-
-        resizer.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
-        expect(store.getState().headWidthPx).toBe(200);
-    });
-
-    it('ignores other keys on the resizer', () => {
-        const { store, grid } = mount();
-        grid.element
-            .querySelector('.tvguide-resizer')
-            .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-        expect(store.getState().headWidthPx).toBe(200);
-    });
-});
-
 describe('row controls', () => {
     it('shows the name as the badge when a channel has no artwork', () => {
         const { grid } = mount();
@@ -526,25 +496,5 @@ describe('leaving the grid', () => {
         grid.element.querySelector('.tvguide-grid-body').dispatchEvent(new MouseEvent('mouseleave'));
 
         expect(store.getState().focus.timeMs).toBe(moved);
-    });
-});
-
-describe('the resizer actually binds', () => {
-    it('responds to a pointer drag', () => {
-        // Regression: this listener was registered after `return` inside
-        // createGrid, so it never bound and dragging did nothing at all.
-        const { store, grid } = mount();
-        const resizer = grid.element.querySelector('.tvguide-resizer');
-
-        resizer.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, bubbles: true }));
-        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 160, bubbles: true }));
-
-        expect(store.getState().headWidthPx).toBe(260);
-
-        window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
-        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 400, bubbles: true }));
-
-        // Released: further movement must not keep resizing.
-        expect(store.getState().headWidthPx).toBe(260);
     });
 });
