@@ -1112,7 +1112,13 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     min-width: 0;
 }
 
-/* Bottom left is the only free corner: the panel is anchored to the top right
+.tvguide-player-picture {
+    position: relative;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+/* Bottom left is the only free corner: the picture is anchored to the top right
    of the header, so that is the one that can move. */
 .tvguide-player-resizer {
     position: absolute;

@@ -76,7 +76,10 @@ export function createPlayer({ store, viewer }) {
         onkeydown: onResizerKey
     });
 
-    const root = el('div', { class: 'tvguide-player' }, stage, progress, caption, resizer);
+    // Keep the grip outside the stage's clipping and fullscreen boundary, but
+    // anchor it to the picture rather than the taller header-sized panel.
+    const picture = el('div', { class: 'tvguide-player-picture' }, stage, resizer);
+    const root = el('div', { class: 'tvguide-player' }, picture, progress, caption);
 
     resizer.addEventListener('pointerdown', (event) => {
         event.preventDefault();
