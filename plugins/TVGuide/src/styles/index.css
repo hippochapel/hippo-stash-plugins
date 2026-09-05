@@ -405,6 +405,11 @@ body.stash-tvguide-active {
 .tvguide-grid-corner {
     position: relative;
     flex: 0 0 var(--tvguide-head-width);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--tvguide-text-dim);
+    font-size: 12px;
 }
 
 .tvguide-ticks {
@@ -926,15 +931,18 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
 
 .tvguide-typebar[hidden] { display: none; }
 
-.tvguide-typebutton[aria-pressed='true'] {
-    border-color: var(--tvguide-accent);
-    color: var(--tvguide-accent);
+.tvguide-type-select {
+    max-width: 180px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--tvguide-border);
+    border-radius: 4px;
+    background: var(--tvguide-surface-2);
+    color: var(--tvguide-text);
+    font: inherit;
 }
 
-.tvguide-typebutton[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
+.tvguide-type-select:focus-visible { outline: 2px solid var(--tvguide-accent); }
 
 .tvguide-searchbox {
     display: flex;

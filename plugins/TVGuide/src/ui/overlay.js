@@ -94,14 +94,22 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     );
     setIcon(searchBox.firstChild, 'search');
 
-    // The type chips are part of the toolbar rather than a bar of their own:
-    // two stacked strips of channel controls read as two unrelated things, and
-    // the lower one was being squeezed to nothing by the guide below it.
-    const typeBar = el('div', {
-        class: 'tvguide-typebar',
-        role: 'toolbar',
-        'aria-label': 'Filter channels by type'
+    const typeSelect = el('select', {
+        class: 'tvguide-type-select',
+        'aria-label': 'Channel grouping',
+        onchange: () => {
+            const value = typeSelect.value;
+            if (value !== 'all' && store.getState().collapsedGroups.includes(value)) {
+                store.dispatch({ type: Events.TOGGLE_GROUP, key: value });
+            }
+            store.dispatch({ type: Events.SET_TYPE_FILTER, typeFilter: value });
+            if (value !== 'all' && sel.isGridLayout(store.getState())) {
+                grid.scrollGroupIntoView(value);
+            }
+        }
     });
+    const typeBar = el('div', { class: 'tvguide-typebar' }, typeSelect);
+    let renderedTypes = null;
 
     const stage = el('div', { class: 'tvguide-stage' });
     const recentPanel = el('div', { class: 'tvguide-recent-panel', hidden: true });
@@ -321,44 +329,22 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         }
     };
 
-    /**
-     * A chip per source type that actually has channels.
-     *
-     * A type you have no channels for is not a mode you can be in, so it is
-     * left out rather than shown greyed.
-     */
+    // Keep the native select and its options alive during clock/pool updates,
+    // so rendering cannot interrupt a grouping selection in progress.
     function renderTypeBar(state) {
         const types = sel.availableTypes(state);
-        const active = state.typeFilter;
-
         typeBar.hidden = types.length < 2;
-        if (typeBar.hidden) {
-            replaceChildren(typeBar);
-            return;
-        }
-
-        replaceChildren(
-            typeBar,
-            [['all', 'All'], ...types.map((t) => [t, TYPE_LABELS[t] || t])].map(([value, label]) =>
-                el(
-                    'button',
-                    {
-                        class: 'tvguide-typebutton',
-                        type: 'button',
-                        'aria-pressed': active === value ? 'true' : 'false',
-                        onclick: () => {
-                            store.dispatch({ type: Events.SET_TYPE_FILTER, typeFilter: value });
-                            // Also jump there, so the chip navigates when you
-                            // are already showing everything.
-                            if (value !== 'all' && sel.isGridLayout(store.getState())) {
-                                grid.scrollGroupIntoView(value);
-                            }
-                        }
-                    },
-                    label
+        const signature = JSON.stringify(types);
+        if (signature !== renderedTypes) {
+            renderedTypes = signature;
+            replaceChildren(
+                typeSelect,
+                [['all', 'All'], ...types.map((t) => [t, TYPE_LABELS[t] || t])].map(
+                    ([value, label]) => el('option', { value }, label)
                 )
-            )
-        );
+            );
+        }
+        if (typeSelect.value !== state.typeFilter) typeSelect.value = state.typeFilter;
     }
 
     function renderStatus(state) {

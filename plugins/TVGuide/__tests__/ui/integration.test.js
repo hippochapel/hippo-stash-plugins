@@ -515,8 +515,8 @@ describe('overlay', () => {
         return { store, overlay, viewer };
     }
 
-    const typeButtons = (overlay) =>
-        [...overlay.element.querySelectorAll('.tvguide-typebutton')].map((b) => b.textContent);
+    const typeOptions = (overlay) =>
+        [...overlay.element.querySelectorAll('.tvguide-type-select option')].map((b) => b.textContent);
 
     const mixedState = (overrides = {}) =>
         baseState({
@@ -534,7 +534,7 @@ describe('overlay', () => {
         expect(store.getState().guideScrollChannelId).toBeNull();
     });
 
-    describe('the type chips', () => {
+    describe('the grouping dropdown', () => {
         it('live in the toolbar, not in a bar of their own', () => {
             // Two stacked strips of channel controls read as two unrelated
             // things, and the lower one was being squeezed to nothing by the
@@ -563,27 +563,27 @@ describe('overlay', () => {
             );
         });
 
-        it('offers All plus a chip per type that has channels', () => {
+        it('offers All plus an option per type that has channels', () => {
             const { overlay } = mountOverlay(mixedState());
-            expect(typeButtons(overlay)).toEqual(['All', 'Studios', 'Tags']);
+            expect(typeOptions(overlay)).toEqual(['All', 'Studios', 'Tags']);
         });
 
         it('leaves out a type with no channels, since it is not a mode you can be in', () => {
             const { overlay } = mountOverlay(mixedState());
-            expect(typeButtons(overlay)).not.toContain('Models');
-            expect(typeButtons(overlay)).not.toContain('Groups');
+            expect(typeOptions(overlay)).not.toContain('Models');
+            expect(typeOptions(overlay)).not.toContain('Groups');
         });
 
-        it('hides the chips entirely when there is only one type', () => {
+        it('hides the dropdown when there is only one type', () => {
             const { overlay } = mountOverlay(baseState());
             expect(overlay.element.querySelector('.tvguide-typebar').hidden).toBe(true);
         });
 
         it('narrows the guide to one type', () => {
             const { store, overlay } = mountOverlay(mixedState());
-            [...overlay.element.querySelectorAll('.tvguide-typebutton')]
-                .find((b) => b.textContent === 'Tags')
-                .click();
+            const select = overlay.element.querySelector('.tvguide-type-select');
+            select.value = 'tag';
+            select.dispatchEvent(new Event('change'));
 
             expect(store.getState().typeFilter).toBe('tag');
             const ids = [...overlay.element.querySelectorAll('.tvguide-row')].map(
@@ -592,11 +592,37 @@ describe('overlay', () => {
             expect(ids).toEqual(['tag:1']);
         });
 
+        it('expands a collapsed grouping when selected', () => {
+            const { store, overlay } = mountOverlay(mixedState({ collapsedGroups: ['tag'] }));
+            const select = overlay.element.querySelector('.tvguide-type-select');
+            select.value = 'tag';
+            select.dispatchEvent(new Event('change'));
+
+            expect(store.getState().collapsedGroups).not.toContain('tag');
+            expect(overlay.element.querySelector('.tvguide-row[data-channel-id="tag:1"]')).not.toBeNull();
+            expect(select.value).toBe('tag');
+            select.value = 'all';
+            select.dispatchEvent(new Event('change'));
+            expect(overlay.element.querySelectorAll('.tvguide-row')).toHaveLength(3);
+        });
+
+        it('preserves the dropdown and its options across unrelated renders', () => {
+            const { store, overlay } = mountOverlay(mixedState());
+            const select = overlay.element.querySelector('.tvguide-type-select');
+            const option = select.options[1];
+            select.focus();
+            overlay.render({ ...store.getState(), nowMs: NOON + MIN });
+
+            expect(overlay.element.querySelector('.tvguide-type-select')).toBe(select);
+            expect(select.options[1]).toBe(option);
+            expect(document.activeElement).toBe(select);
+        });
+
         it('jumps to a group as well as filtering to it', () => {
             const { overlay } = mountOverlay(mixedState());
-            [...overlay.element.querySelectorAll('.tvguide-typebutton')]
-                .find((b) => b.textContent === 'Tags')
-                .click();
+            const select = overlay.element.querySelector('.tvguide-type-select');
+            select.value = 'tag';
+            select.dispatchEvent(new Event('change'));
 
             expect(overlay.element.querySelector('.tvguide-group[data-group="tag"]')).not.toBeNull();
         });

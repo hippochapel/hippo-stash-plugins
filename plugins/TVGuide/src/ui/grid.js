@@ -36,6 +36,10 @@ import { createChannelRail } from './channelRail.js';
 const GROUP_LABELS = { ...SOURCE_LABELS, [PINNED_GROUP]: 'Pinned' };
 
 export function createGrid({ store, onRowVisible, touchGuard }) {
+    const dateLabel = el('div', { class: 'tvguide-grid-corner' });
+    const dateFormatter = new Intl.DateTimeFormat('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric'
+    });
     const ticksRow = el('div', { class: 'tvguide-ticks', 'aria-hidden': 'true' });
     const gridlines = el('div', { class: 'tvguide-gridlines', 'aria-hidden': 'true' });
     const nowLine = el('div', { class: 'tvguide-nowline', 'aria-hidden': 'true' });
@@ -80,7 +84,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
         el(
             'div',
             { class: 'tvguide-grid-head' },
-            el('div', { class: 'tvguide-grid-corner' }),
+            dateLabel,
             resizer,
             ticksRow
         ),
@@ -178,6 +182,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     }
 
     function renderTicks(state) {
+        dateLabel.textContent = dateFormatter.format(state.nowMs);
         replaceChildren(
             ticksRow,
             sel.ticks(state).map((tick) =>

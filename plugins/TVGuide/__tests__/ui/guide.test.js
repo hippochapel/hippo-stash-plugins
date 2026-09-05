@@ -135,6 +135,16 @@ describe('grouping', () => {
     });
 });
 
+describe('the guide date', () => {
+    it('shows the current local date beside the times and updates at midnight', () => {
+        const { store, grid } = mount();
+        const date = grid.element.querySelector('.tvguide-grid-corner');
+        expect(date.textContent).toBe('Sat, Aug 22');
+        grid.render({ ...store.getState(), nowMs: new Date(2026, 7, 23, 0, 0).getTime() });
+        expect(date.textContent).toBe('Sun, Aug 23');
+    });
+});
+
 describe('the now-line', () => {
     it('is positioned as a percentage of the track, not of the whole grid', () => {
         // Regression: it used to be positioned against the full scroll
