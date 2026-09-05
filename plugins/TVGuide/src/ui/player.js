@@ -16,7 +16,7 @@ import { Events } from '../state/actions.js';
 import { formatClock, formatDuration, formatRemaining } from '../domain/format.js';
 import { sceneTitle } from '../api/scenes.js';
 import * as sel from '../state/selectors.js';
-import { setIcon } from './icons.js';
+import { ICONS } from './icons.js';
 
 export function createPlayer({ store, viewer }) {
     const bodyLockClass = 'stash-tvguide-active';
@@ -24,22 +24,26 @@ export function createPlayer({ store, viewer }) {
     let fullscreenRequestGeneration = 0;
     let destroyed = false;
     let nativeFullscreenBodyLock = null;
-    let nativeFullscreenRenderFreeze = false;
+    let nativeFullscreenPending = false;
+    let fullscreenWanted = false;
+    let renderedControls = null;
     const spinner = el('div', { class: 'tvguide-spinner', 'aria-hidden': 'true' });
 
     const playPause = controlButton('tvguide-play', () =>
         store.dispatch({
             type: Events.SET_VIEWER_PAUSED,
             paused: !store.getState().viewerPaused
-        })
+        }),
+        ['pause', 'play']
     );
 
     const mute = controlButton('tvguide-mute', () =>
-        store.dispatch({ type: Events.SET_MUTED, muted: !store.getState().muted })
+        store.dispatch({ type: Events.SET_MUTED, muted: !store.getState().muted }),
+        ['muted', 'unmuted']
     );
 
-    const theater = controlButton('tvguide-theater', () => cycleMode('theater'));
-    const fullscreen = controlButton('tvguide-fullscreen', () => cycleMode('fullscreen'));
+    const theater = controlButton('tvguide-theater', () => cycleMode('theater'), ['theater']);
+    const fullscreen = controlButton('tvguide-fullscreen', () => cycleMode('fullscreen'), ['fullscreen', 'exitFullscreen']);
 
     const controls = el(
         'div',
@@ -118,8 +122,25 @@ export function createPlayer({ store, viewer }) {
         root.classList.toggle('is-loading', event.type === 'loading');
     });
 
-    function controlButton(className, onclick) {
-        return el('button', { class: `tvguide-player-button ${className}`, type: 'button', onclick });
+    function controlButton(className, onclick, icons) {
+        const button = el('button', { class: `tvguide-player-button ${className}`, type: 'button', onclick });
+        // Mount both states once. Updating a control never removes descendants
+        // from the fullscreen stage or replaces the focused button.
+        for (const name of icons) {
+            const svg = ICONS[name]();
+            svg.dataset.icon = name;
+            svg.style.display = 'none';
+            button.appendChild(svg);
+        }
+        return button;
+    }
+
+    function setControlIcon(button, name) {
+        if (button.dataset.icon === name) return;
+        button.dataset.icon = name;
+        for (const svg of button.children) {
+            svg.style.display = svg.dataset.icon === name ? '' : 'none';
+        }
     }
 
     /** Toggle a mode; exiting fullscreen restores the normal mode it replaced. */
@@ -133,9 +154,8 @@ export function createPlayer({ store, viewer }) {
     /**
      * Fullscreen targets the *stage*, not the whole panel.
      *
-     * The panel's progress readout is rewritten every second; keeping the
-     * fullscreen element off that churning subtree is what stops fullscreen
-     * dropping out again a tick after it opens.
+     * Keep this element and its ancestors connected for the whole session.
+     * Fullscreen can end when its target is removed, even if reinserted later.
      */
     function fullscreenElement() {
         return document.fullscreenElement || document.webkitFullscreenElement || null;
@@ -204,33 +224,35 @@ export function createPlayer({ store, viewer }) {
      * when the stream reloads, so use the fixed-viewport fallback instead.
      */
     function applyFullscreen(on) {
+        fullscreenWanted = on;
         if (on) {
-            // Overlay rendering is frozen during native fullscreen entry to
-            // avoid Safari collapsing it, so this control must change before
-            // the request rather than waiting for the next render.
-            theater.hidden = true;
-            if (isFullscreen()) return;
+            if (destroyed) return;
+            renderControls({ ...store.getState(), playerMode: 'fullscreen' });
+            if (isFullscreen() || pseudoFullscreen || nativeFullscreenPending) return;
             const requestGeneration = ++fullscreenRequestGeneration;
-            // Rendering the fullscreen state swaps this icon. Do it before
-            // requesting fullscreen so Safari sees no DOM churn in its newly
-            // fullscreen subtree.
-            setIcon(fullscreen, 'exitFullscreen');
             const request = stage.requestFullscreen || stage.webkitRequestFullscreen;
             if (request) {
-                nativeFullscreenRenderFreeze = true;
+                nativeFullscreenPending = true;
                 releaseNativeFullscreenBodyLock();
                 try {
                     const result = request.call(stage);
                     if (result && typeof result.then === 'function') {
                         Promise.resolve(result).then(
                             () => {
+                                // The user can close the player before the
+                                // browser finishes its asynchronous request.
+                                if (destroyed || !fullscreenWanted) {
+                                    exitOwnedFullscreen();
+                                    return;
+                                }
                                 if (!destroyed && requestGeneration === fullscreenRequestGeneration) {
+                                    nativeFullscreenPending = false;
                                     syncScrollLock();
                                 }
                             },
                             () => {
                                 if (!destroyed && requestGeneration === fullscreenRequestGeneration) {
-                                    nativeFullscreenRenderFreeze = false;
+                                    nativeFullscreenPending = false;
                                     restoreNativeFullscreenBodyLock();
                                     setPseudoFullscreen(true);
                                 }
@@ -238,40 +260,61 @@ export function createPlayer({ store, viewer }) {
                         );
                     }
                 } catch (_) {
-                    nativeFullscreenRenderFreeze = false;
+                    nativeFullscreenPending = false;
                     restoreNativeFullscreenBodyLock();
                     if (!destroyed && requestGeneration === fullscreenRequestGeneration) setPseudoFullscreen(true);
                 }
             } else {
-                nativeFullscreenRenderFreeze = false;
                 setPseudoFullscreen(true);
             }
             return;
         }
         fullscreenRequestGeneration += 1;
-        nativeFullscreenRenderFreeze = false;
-        theater.hidden = false;
+        nativeFullscreenPending = false;
         restoreNativeFullscreenBodyLock();
-        setIcon(fullscreen, 'fullscreen');
+        const state = store.getState();
+        renderControls({ ...state, playerMode: state.playerMode === 'fullscreen' ? state.fullscreenReturnMode : state.playerMode });
         setPseudoFullscreen(false);
+        exitOwnedFullscreen();
+    }
+
+    function exitOwnedFullscreen() {
         // Only exit what we opened -- exiting unconditionally would fight
         // anything else on the page that is fullscreen.
         if (!isFullscreen()) return;
         const exit = document.exitFullscreen || document.webkitExitFullscreen;
         if (exit) {
-            const result = exit.call(document);
-            if (result && typeof result.catch === 'function') result.catch(() => {});
+            try {
+                const result = exit.call(document);
+                if (result && typeof result.catch === 'function') result.catch(() => {});
+            } catch (_) {
+                // Some prefixed implementations throw if exit is in progress.
+            }
         }
     }
+
+    const onFullscreenError = (event) => {
+        // Older WebKit reports failure through an event instead of a Promise.
+        if (event.target !== stage || !nativeFullscreenPending || !fullscreenWanted) return;
+        fullscreenRequestGeneration += 1;
+        nativeFullscreenPending = false;
+        restoreNativeFullscreenBodyLock();
+        setPseudoFullscreen(true);
+    };
 
     // Let state follow the browser: pressing Esc, or the OS dropping out of
     // fullscreen, must not leave the button claiming we are still in it.
     // Safari fires only the prefixed event, and the video's own fullscreen
     // fires neither -- it reports itself through `webkitendfullscreen`.
     const onFullscreenChange = () => {
+        if (isFullscreen()) nativeFullscreenPending = false;
+        // A document-level event for another element (or a duplicate exit
+        // event) does not mean our pending request has completed.
+        if (nativeFullscreenPending) return;
         syncScrollLock();
         if (!isFullscreenActive() && store.getState().playerMode === 'fullscreen') {
-            nativeFullscreenRenderFreeze = false;
+            fullscreenWanted = false;
+            fullscreenRequestGeneration += 1;
             restoreNativeFullscreenBodyLock();
             store.dispatch({
                 type: Events.SET_PLAYER_MODE,
@@ -281,6 +324,8 @@ export function createPlayer({ store, viewer }) {
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    document.addEventListener('fullscreenerror', onFullscreenError);
+    document.addEventListener('webkitfullscreenerror', onFullscreenError);
     viewer.element.addEventListener('webkitendfullscreen', onFullscreenChange);
 
     /**
@@ -299,20 +344,23 @@ export function createPlayer({ store, viewer }) {
     };
 
     function renderControls(state) {
-        setIcon(playPause, state.viewerPaused ? 'play' : 'pause');
+        const signature = `${state.viewerPaused}:${state.muted}:${state.playerMode}`;
+        if (renderedControls === signature) return;
+        renderedControls = signature;
+        setControlIcon(playPause, state.viewerPaused ? 'play' : 'pause');
         playPause.setAttribute('aria-label', state.viewerPaused ? 'Play' : 'Pause');
         playPause.setAttribute('aria-pressed', state.viewerPaused ? 'true' : 'false');
 
-        setIcon(mute, state.muted ? 'muted' : 'unmuted');
+        setControlIcon(mute, state.muted ? 'muted' : 'unmuted');
         mute.setAttribute('aria-label', state.muted ? 'Unmute' : 'Mute');
         mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
 
-        setIcon(theater, 'theater');
+        setControlIcon(theater, 'theater');
         theater.hidden = state.playerMode === 'fullscreen';
         theater.setAttribute('aria-label', 'Theater mode');
         theater.setAttribute('aria-pressed', state.playerMode === 'theater' ? 'true' : 'false');
 
-        setIcon(fullscreen, state.playerMode === 'fullscreen' ? 'exitFullscreen' : 'fullscreen');
+        setControlIcon(fullscreen, state.playerMode === 'fullscreen' ? 'exitFullscreen' : 'fullscreen');
         fullscreen.setAttribute('aria-label', 'Fullscreen');
         fullscreen.setAttribute('aria-pressed', state.playerMode === 'fullscreen' ? 'true' : 'false');
     }
@@ -332,19 +380,20 @@ export function createPlayer({ store, viewer }) {
             applyFullscreen(mode === 'fullscreen');
         },
 
-        isNativeFullscreenTransitionActive() {
-            return nativeFullscreenRenderFreeze && !pseudoFullscreen;
+        renderControls,
+
+        isNativeFullscreenActive() {
+            return nativeFullscreenPending || isFullscreen();
         },
 
         destroy() {
             destroyed = true;
-            fullscreenRequestGeneration += 1;
-            nativeFullscreenRenderFreeze = false;
-            restoreNativeFullscreenBodyLock();
-            setPseudoFullscreen(false);
             document.removeEventListener('fullscreenchange', onFullscreenChange);
             document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+            document.removeEventListener('fullscreenerror', onFullscreenError);
+            document.removeEventListener('webkitfullscreenerror', onFullscreenError);
             viewer.element.removeEventListener('webkitendfullscreen', onFullscreenChange);
+            applyFullscreen(false);
             clearTimeout(hideTimer);
         },
 

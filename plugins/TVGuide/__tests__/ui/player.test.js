@@ -172,13 +172,17 @@ describe('controls', () => {
         expect(q(player, '.tvguide-play svg')).toBe(before);
     });
 
-    it('swaps the icon when state changes', () => {
+    it('changes the visible icon without replacing control descendants', () => {
         const { player } = mount();
-        const before = q(player, '.tvguide-play svg').innerHTML;
-        q(player, '.tvguide-play').click();
-        expect(q(player, '.tvguide-play svg').innerHTML).not.toBe(before);
-        // Exactly one icon -- the old one is removed, not stacked.
-        expect(q(player, '.tvguide-play').querySelectorAll('svg')).toHaveLength(1);
+        const button = q(player, '.tvguide-play');
+        const icons = [...button.querySelectorAll('svg')];
+        const observer = new MutationObserver(() => {});
+        observer.observe(button, { childList: true, subtree: true });
+        button.click();
+        expect([...button.querySelectorAll('svg')]).toEqual(icons);
+        expect(icons.filter((svg) => svg.style.display !== 'none').map((svg) => svg.dataset.icon)).toEqual(['play']);
+        expect(observer.takeRecords()).toHaveLength(0);
+        observer.disconnect();
     });
 
     it('freezes the readout while paused', () => {
@@ -222,6 +226,47 @@ describe('controls', () => {
 });
 
 describe('fullscreen fallbacks', () => {
+    it('does not duplicate a pending native request or treat unrelated events as an exit', () => {
+        const { store, player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.requestFullscreen = jest.fn(() => new Promise(() => {}));
+        q(player, '.tvguide-fullscreen').click();
+        player.setMode('fullscreen');
+        player.setMode('fullscreen');
+        document.dispatchEvent(new Event('fullscreenchange'));
+        document.dispatchEvent(new Event('webkitfullscreenchange'));
+        expect(stage.requestFullscreen).toHaveBeenCalledTimes(1);
+        expect(store.getState().playerMode).toBe('fullscreen');
+    });
+
+    it.each(['exit', 'destroy'])('cleans up a native request that succeeds after %s', async (action) => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        let resolveRequest;
+        stage.requestFullscreen = jest.fn(() => new Promise((resolve) => { resolveRequest = resolve; }));
+        const exit = jest.fn(() => Promise.resolve());
+        document.exitFullscreen = exit;
+        player.setMode('fullscreen');
+        if (action === 'destroy') player.destroy();
+        else player.setMode('corner');
+        Object.defineProperty(document, 'fullscreenElement', { value: stage, configurable: true });
+        resolveRequest();
+        await Promise.resolve();
+        expect(exit).toHaveBeenCalledTimes(1);
+        Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+        delete document.exitFullscreen;
+    });
+
+    it('falls back when prefixed fullscreen reports an asynchronous error', () => {
+        const { player } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        stage.webkitRequestFullscreen = jest.fn();
+        player.setMode('fullscreen');
+        stage.dispatchEvent(new Event('webkitfullscreenerror', { bubbles: true }));
+        expect(stage.classList.contains('tvguide-pseudo-fullscreen')).toBe(true);
+        expect(player.isNativeFullscreenActive()).toBe(false);
+    });
+
     it('fullscreens the stage, not the whole panel', () => {
         // The panel's progress readout is rewritten every second; keeping the
         // fullscreen element off that subtree is what stopped fullscreen

@@ -272,10 +272,12 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
                 return;
             }
             mount();
-            // Safari can leave native fullscreen when descendants or ancestors
-            // mutate. The guide and custom player controls therefore stay
-            // completely static until native fullscreen has ended.
-            if (player.isNativeFullscreenTransitionActive()) return;
+            // The guide is behind native fullscreen; leave its layout idle,
+            // but keep the visible controls in sync with playback state.
+            if (player.isNativeFullscreenActive()) {
+                player.renderControls(state);
+                return;
+            }
             root.classList.toggle('is-theater', state.playerMode === 'theater');
             // On the overlay, not the player: the header sizes itself from this
             // and custom properties only inherit downwards.

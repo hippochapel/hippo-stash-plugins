@@ -492,8 +492,16 @@ describe('banner', () => {
 });
 
 describe('overlay', () => {
-    function mountOverlay(state) {
-        const store = createStore({ initialState: state });
+    function mountOverlay(state, withPlayerEffects = false) {
+        const store = createStore({
+            initialState: state,
+            runEffect: (effect) => {
+                if (!withPlayerEffects) return;
+                if (effect.type === 'setPlayerMode') overlay.player.setMode(effect.mode);
+                if (effect.type === 'setPaused') viewer.setPaused(effect.paused);
+                if (effect.type === 'setMuted') viewer.setMuted(effect.muted);
+            }
+        });
         const viewer = {
             element: document.createElement('video'),
             tune: jest.fn(),
@@ -743,7 +751,7 @@ describe('overlay', () => {
         window.scrollTo = scrollTo;
     });
 
-    it('pauses playback without mutating controls during native fullscreen', () => {
+    it('updates playback controls while native fullscreen is pending', () => {
         const state = baseState({ playerMode: 'fullscreen' });
         const { store, overlay } = mountOverlay(state);
         const stage = overlay.element.querySelector('.tvguide-player-stage');
@@ -756,10 +764,62 @@ describe('overlay', () => {
         play.click();
 
         expect(store.getState().viewerPaused).toBe(true);
-        expect(play.dataset.icon).toBe('pause');
-        expect(play.getAttribute('aria-label')).toBe('Pause');
+        expect(play.dataset.icon).toBe('play');
+        expect(play.getAttribute('aria-label')).toBe('Play');
         overlay.destroy();
         window.scrollTo = scrollTo;
+    });
+
+    it.each(['requestFullscreen', 'webkitRequestFullscreen'])('keeps the stage mounted and controls live through %s', async (api) => {
+        const { store, overlay, viewer } = mountOverlay(baseState({ playerMode: 'theater' }), true);
+        const stage = overlay.element.querySelector('.tvguide-player-stage');
+        const fullscreen = stage.querySelector('.tvguide-fullscreen');
+        const play = stage.querySelector('.tvguide-play');
+        const mute = stage.querySelector('.tvguide-mute');
+        const fullscreenProperty = api === 'requestFullscreen' ? 'fullscreenElement' : 'webkitFullscreenElement';
+        const eventName = api === 'requestFullscreen' ? 'fullscreenchange' : 'webkitfullscreenchange';
+        let active = null;
+        Object.defineProperty(document, fullscreenProperty, { get: () => active, configurable: true });
+        stage[api] = jest.fn(() => {
+            active = stage;
+            return api === 'requestFullscreen' ? Promise.resolve() : undefined;
+        });
+        const observer = new MutationObserver(() => {});
+        observer.observe(overlay.element, { childList: true, subtree: true });
+        const scrollTo = jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
+        try {
+            fullscreen.click();
+            document.dispatchEvent(new Event(eventName));
+            await Promise.resolve();
+            play.focus();
+            play.click();
+            mute.click();
+            store.dispatch({ type: Events.TICK, nowMs: NOON + 1000 });
+            store.dispatch({ type: Events.LAYOUT_CHANGED, layout: 'list' });
+
+            expect(document[fullscreenProperty]).toBe(stage);
+            expect(stage.isConnected).toBe(true);
+            expect(stage.querySelector('video')).toBe(viewer.element);
+            expect(document.activeElement).toBe(play);
+            expect(observer.takeRecords()).toHaveLength(0);
+            expect(play.getAttribute('aria-label')).toBe('Play');
+            expect(mute.getAttribute('aria-label')).toBe('Mute');
+            expect(fullscreen.getAttribute('aria-pressed')).toBe('true');
+            expect(viewer.setPaused).toHaveBeenCalledWith(true);
+            expect(viewer.setMuted).toHaveBeenCalledWith(false);
+
+            active = null;
+            document.dispatchEvent(new Event(eventName));
+            expect(store.getState().playerMode).toBe('theater');
+            expect(overlay.element.querySelector('.tvguide-list')).not.toBeNull();
+            expect(fullscreen.getAttribute('aria-pressed')).toBe('false');
+        } finally {
+            observer.disconnect();
+            active = null;
+            overlay.destroy();
+            delete document[fullscreenProperty];
+            scrollTo.mockRestore();
+        }
     });
 
     it('toggles the shortcut help panel', () => {
