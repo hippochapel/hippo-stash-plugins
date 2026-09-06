@@ -526,6 +526,24 @@ describe('overlay', () => {
     const typeOptions = (overlay) =>
         [...overlay.element.querySelectorAll('.tvguide-type-select option')].map((b) => b.textContent);
 
+    it('jumps to the tuned channel in the mobile list after switching layouts', () => {
+        const { store, overlay } = mountOverlay(baseState());
+        expect(overlay.element.querySelector('.tvguide-list-top').hidden).toBe(true);
+        store.dispatch({ type: Events.LAYOUT_CHANGED, layout: 'list' });
+        const list = overlay.element.querySelector('.tvguide-list');
+        const tunedRow = list.querySelector('[data-channel-id="studio:1"]');
+        Object.defineProperty(tunedRow, 'offsetTop', { value: 420 });
+
+        overlay.element.querySelector('.tvguide-jump').click();
+
+        expect(list.scrollTop).toBe(420);
+        const top = overlay.element.querySelector('.tvguide-list-top');
+        expect(top.hidden).toBe(false);
+        top.click();
+        expect(list.scrollTop).toBe(0);
+        overlay.destroy();
+    });
+
     const mixedState = (overrides = {}) =>
         baseState({
             allChannels: [

@@ -607,12 +607,16 @@ body.stash-tvguide-active {
 /* ---------- mobile list ---------- */
 
 .tvguide-list {
+    position: relative;
     height: 100%;
     overflow-y: auto;
     /* Never hijack the page scroll on a phone. */
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
 }
+
+.tvguide-list-top[hidden] { display: none; }
 
 .tvguide-list-item {
     display: flex;
@@ -1342,8 +1346,60 @@ body.stash-tvguide-scroll-soft-lock {
 .tvguide-manager-bulk { display: flex; gap: 6px; }
 
 @media (max-width: 767px) {
-    .tvguide-player { flex: 0 0 auto; width: 100%; }
+    /* Keep the channel list reachable even with a long description or a
+       landscape viewport. Details and video can scroll within the header. */
+    .tvguide-header {
+        max-height: 50vh;
+        max-height: 50dvh;
+        overflow-y: auto;
+        position: relative;
+        align-items: stretch;
+    }
+    .tvguide-banner,
+    .tvguide-overlay.is-theater .tvguide-banner {
+        flex: 0 0 150px;
+        height: 150px;
+    }
+    .tvguide-banner { --tvguide-banner-art-width: 96px; gap: 10px; }
+    .tvguide-banner-title { font-size: 16px; overflow-wrap: anywhere; }
+    .tvguide-related { flex-wrap: wrap; }
+    .tvguide-player { flex: 0 0 auto; width: 100%; height: auto; order: -1; }
+    /* The list already includes programme descriptions. In corner mode give
+       that space back to the channels, and keep only the compact player. */
+    .tvguide-overlay.has-player:not(.is-theater) .tvguide-banner { display: none; }
+    .tvguide-overlay:not(.is-theater) .tvguide-header { padding: 6px 12px; }
+    .tvguide-overlay:not(.is-theater) .tvguide-player-stage:not(:fullscreen):not(:-webkit-full-screen):not(.tvguide-pseudo-fullscreen) .tvguide-viewer-video {
+        max-height: 26vh;
+        max-height: 26dvh;
+        object-fit: contain;
+    }
     .tvguide-player-resizer { display: none; }
     .tvguide-rail { display: none; }
+
+    .tvguide-topbar { order: -1; }
+    .tvguide-searchbox { flex-basis: 100%; max-width: none; min-width: 0; }
+    .tvguide-toolbar-right { width: 100%; flex-wrap: wrap; }
+    .tvguide-topbar .tvguide-close { order: 0; margin-left: auto; }
+    .tvguide-toolbar-divider { display: none; }
+    .tvguide-toolbar-right .tvguide-status { flex-basis: 100%; order: 1; }
+    .tvguide-typebar { flex: 1 1 90px; }
+    .tvguide-type-select { width: 100%; }
+    .tvguide-search,
+    .tvguide-type-select,
+    .tvguide-manager input,
+    .tvguide-manager select { font-size: 16px; min-height: 44px; }
+    .tvguide-recent-panel { min-width: 0; width: 100%; box-sizing: border-box; }
+    .tvguide-recent-row { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr); }
+    .tvguide-list-channel,
+    .tvguide-list-now,
+    .tvguide-list-times { overflow-wrap: anywhere; min-width: 0; }
+
+    .tvguide-manager { position: fixed; }
+    .tvguide-manager-tools { flex-wrap: wrap; width: 100%; min-width: 0; margin-left: 0; }
+    .tvguide-manager-search { width: 100%; min-width: 0; box-sizing: border-box; }
+    .tvguide-manager-row-actions,
+    .tvguide-manager-rule { flex-wrap: wrap; }
+    .tvguide-manager-field { min-width: 0; max-width: 100%; }
+    .tvguide-manager-field input { min-width: 0; max-width: 100%; box-sizing: border-box; }
     .tvguide-manager-bulk { width: 100%; }
 }

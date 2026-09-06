@@ -130,6 +130,14 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     });
     setIcon(recentButton, 'history');
 
+    const listTop = el('button', {
+        class: 'tvguide-list-top',
+        type: 'button',
+        text: 'Top',
+        'aria-label': 'Scroll to the top of the channel list',
+        onclick: () => { list.element.scrollTop = 0; }
+    });
+
     const helpPanel = el(
         'div',
         { class: 'tvguide-help', hidden: true, role: 'dialog', 'aria-label': 'Keyboard shortcuts' },
@@ -151,14 +159,16 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         el('span', { class: 'tvguide-toolbar-divider', 'aria-hidden': 'true' }),
         recentButton,
         recentPanel,
+        listTop,
         el('button', {
             class: 'tvguide-jump',
             type: 'button',
             text: 'Current',
             'aria-label': 'Jump to the channel playing now',
             onclick: () => {
-                const { tunedChannelId } = store.getState();
-                if (tunedChannelId) grid.scrollChannelIntoView(tunedChannelId);
+                const state = store.getState();
+                const view = sel.isGridLayout(state) ? grid : list;
+                if (state.tunedChannelId) view.scrollChannelIntoView(state.tunedChannelId);
             }
         }),
         el('button', {
@@ -279,6 +289,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
                 return;
             }
             root.classList.toggle('is-theater', state.playerMode === 'theater');
+            root.classList.toggle('has-player', Boolean(state.settings.guide_autoplay));
             // On the overlay, not the player: the header sizes itself from this
             // and custom properties only inherit downwards.
             root.style.setProperty('--tvguide-player-width', `${state.playerWidthPx}px`);
@@ -300,6 +311,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             }
 
             timeControls.hidden = !sel.isGridLayout(state);
+            listTop.hidden = sel.isGridLayout(state);
             if (guideSearch.value !== state.guideSearch) guideSearch.value = state.guideSearch;
             searchClear.hidden = state.guideSearch === '';
             renderTypeBar(state);
