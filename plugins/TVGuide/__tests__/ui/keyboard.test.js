@@ -336,3 +336,30 @@ describe('the channel manager owns the keyboard while open', () => {
         expect(dispatch).toHaveBeenCalledWith({ type: Events.MANAGER_CLOSE });
     });
 });
+
+describe('player keyboard scope', () => {
+    it('captures surfing and pause before guide shortcuts, while leaving buttons usable', () => {
+        const stage = document.createElement('div');
+        stage.className = 'tvguide-player-stage';
+        const button = document.createElement('button');
+        stage.append(button);
+        const dispatch = jest.fn();
+        const state = { ...createInitialState(), open: true, channels: [{ id: 'a' }, { id: 'b' }], tunedChannelId: 'a' };
+        const handle = createKeyboardHandler({ store: { getState: () => state, dispatch } });
+        const send = (key, extra = {}) => {
+            const event = { key, target: button, preventDefault: jest.fn(), stopPropagation: jest.fn(), ...extra };
+            handle(event);
+            return event;
+        };
+        send('ArrowRight');
+        expect(dispatch).toHaveBeenCalledWith({ type: Events.TUNE, channelId: 'b', scrollIntoView: false });
+        dispatch.mockClear();
+        send(' ');
+        expect(dispatch).toHaveBeenCalledWith({ type: Events.SET_VIEWER_PAUSED, paused: true });
+        dispatch.mockClear();
+        expect(send('Enter').preventDefault).not.toHaveBeenCalled();
+        send(' ', { repeat: true });
+        send('ArrowRight', { metaKey: true });
+        expect(dispatch).not.toHaveBeenCalled();
+    });
+});

@@ -118,6 +118,17 @@ fullscreen, TV Guide uses the same viewport-filling fallback as Gallery Mode,
 so the video and its controls remain available; theater remains the alternative
 that keeps the guide visible.
 
+Click the video or tab to the player to channel surf with `←` / `→`; `Space`
+pauses or resumes. Surfing follows the visible guide order, wraps at either end,
+and respects search, filters, hidden channels and collapsed groups. In fullscreen,
+scroll down or swipe up for the next channel (reverse for the previous channel).
+Each wheel gesture or swipe changes one channel. A three-second TV-style overlay
+accompanies a short vertical slide transition (disabled for reduced motion).
+The next stream may still need to buffer. The overlay
+shows the channel number, name, current programme and a description excerpt of
+up to 180 characters (at most three lines). Numbers start at 1 in the
+full lineup and do not change when filtering, collapsing groups or pinning.
+
 Clicking a programme that is not on now **previews** it as a still and pauses
 live playback, with a Back to live control. Clicking anything currently live
 tunes to it instead.

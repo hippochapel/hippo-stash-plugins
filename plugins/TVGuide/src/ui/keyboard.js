@@ -11,6 +11,7 @@
 
 import { Events } from '../state/actions.js';
 import { windowMs, windowEndMs } from '../state/selectors.js';
+import { surfChannel } from './channelSurf.js';
 
 export const Intents = {
     TIME_PREV: 'TIME_PREV',
@@ -104,6 +105,7 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
     return function handleKeydown(event) {
         const state = store.getState();
         if (!state.open) return;
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (handlesOwnKeys(event.target)) return;
 
         const intent = mapKey(event);
@@ -116,6 +118,22 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
             event.preventDefault();
             store.dispatch({ type: Events.MANAGER_CLOSE });
             return;
+        }
+
+        if (event.target?.closest?.('.tvguide-player-stage')) {
+            if (['ArrowLeft', 'ArrowRight', ' ', 'Spacebar'].includes(event.key)) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (event.repeat) return;
+                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                    surfChannel(store, event.key === 'ArrowRight' ? 1 : -1);
+                } else {
+                    store.dispatch({ type: Events.SET_VIEWER_PAUSED, paused: !state.viewerPaused });
+                }
+                return;
+            }
+            // Enter still activates focused player buttons.
+            if (intent !== Intents.CLOSE && intent !== Intents.MUTE) return;
         }
 
         // Only claim keys we actually acted on, so browser shortcuts survive.

@@ -732,3 +732,87 @@ describe('caption', () => {
         expect(q(player, '.tvguide-player-caption').textContent).toBe('');
     });
 });
+
+describe('fullscreen channel surfing', () => {
+    const lineup = [channel('studio:1', 'One'), channel('studio:2', 'Two'), channel('studio:3', 'Three')];
+    function setup() {
+        const result = mount({ allChannels: lineup, channels: lineup, playerMode: 'fullscreen' });
+        result.player.setMode('fullscreen');
+        return { ...result, stage: q(result.player, '.tvguide-player-stage') };
+    }
+    function touch(stage, type, points) {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'touches', { value: points.map(([clientX, clientY]) => ({ clientX, clientY })) });
+        stage.dispatchEvent(event);
+        return event;
+    }
+
+    it('focuses the fullscreen stage and changes once per wheel burst', () => {
+        jest.useFakeTimers();
+        try {
+            const { store, stage } = setup();
+            expect(document.activeElement).toBe(stage);
+            const wheel = (deltaY) => stage.dispatchEvent(new WheelEvent('wheel', { deltaY, cancelable: true }));
+            wheel(20);
+            expect(store.getState().tunedChannelId).toBe('studio:1');
+            wheel(60);
+            wheel(100);
+            expect(store.getState().tunedChannelId).toBe('studio:2');
+            jest.advanceTimersByTime(300);
+            wheel(-100);
+            expect(store.getState().tunedChannelId).toBe('studio:1');
+        } finally { jest.useRealTimers(); }
+    });
+
+    it('swipes up once, ignores horizontal/multitouch/control gestures, and reverses down', () => {
+        const { store, stage, player } = setup();
+        touch(stage, 'touchstart', [[100, 200]]);
+        touch(stage, 'touchmove', [[100, 110]]);
+        touch(stage, 'touchmove', [[100, 10]]);
+        expect(store.getState().tunedChannelId).toBe('studio:2');
+        touch(stage, 'touchstart', [[100, 200]]);
+        touch(stage, 'touchmove', [[300, 210]]);
+        touch(stage, 'touchcancel', []);
+        touch(stage, 'touchstart', [[100, 200], [200, 200]]);
+        touch(stage, 'touchmove', [[100, 100]]);
+        touch(q(player, '.tvguide-mute'), 'touchstart', [[100, 200]]);
+        touch(stage, 'touchmove', [[100, 100]]);
+        expect(store.getState().tunedChannelId).toBe('studio:2');
+        touch(stage, 'touchstart', [[100, 100]]);
+        touch(stage, 'touchmove', [[100, 200]]);
+        expect(store.getState().tunedChannelId).toBe('studio:1');
+    });
+
+    it('leaves scrolling and swiping alone outside fullscreen', () => {
+        const { store, player } = mount({ allChannels: lineup, channels: lineup });
+        const stage = q(player, '.tvguide-player-stage');
+        const wheel = new WheelEvent('wheel', { deltaY: 100, cancelable: true });
+        stage.dispatchEvent(wheel);
+        touch(stage, 'touchstart', [[100, 200]]);
+        touch(stage, 'touchmove', [[100, 100]]);
+        expect(wheel.defaultPrevented).toBe(false);
+        expect(store.getState().tunedChannelId).toBe('studio:1');
+    });
+
+    it('updates the numbered overlay through the native fullscreen render path and resets its timeout only on tuning', () => {
+        jest.useFakeTimers();
+        try {
+            const { store, player } = setup();
+            const info = q(player, '.tvguide-channel-info');
+            const base = store.getState();
+            player.renderControls({ ...base, tunedChannelId: 'studio:2', channels: [lineup[1]] });
+            expect(info.textContent).toContain('CH 02 · Two');
+            expect(info.hidden).toBe(false);
+            jest.advanceTimersByTime(2000);
+            player.renderControls({ ...base, tunedChannelId: 'studio:3' });
+            jest.advanceTimersByTime(2000);
+            expect(info.hidden).toBe(false);
+            player.renderControls({ ...base, tunedChannelId: 'studio:3', nowMs: NOON + 1000 });
+            jest.advanceTimersByTime(1000);
+            expect(info.hidden).toBe(true);
+            player.renderControls({ ...base, tunedChannelId: 'studio:2' });
+            player.renderControls({ ...base, playerMode: 'corner' });
+            expect(info.hidden).toBe(true);
+        } finally { jest.useRealTimers(); }
+    });
+});

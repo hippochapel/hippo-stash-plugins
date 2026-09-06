@@ -1148,6 +1148,54 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     overflow: hidden;
 }
 
+.tvguide-player-stage:focus-visible {
+    outline: 2px solid #68b5ff;
+    outline-offset: 2px;
+}
+
+.tvguide-channel-info {
+    position: absolute;
+    top: max(24px, env(safe-area-inset-top));
+    left: max(24px, env(safe-area-inset-left));
+    z-index: 5;
+    max-width: calc(100% - 48px);
+    box-sizing: border-box;
+    padding: 16px 22px;
+    border-left: 4px solid #68b5ff;
+    border-radius: 6px;
+    background: rgba(8, 14, 24, .88);
+    color: #fff;
+    pointer-events: none;
+    overflow-wrap: anywhere;
+}
+
+.tvguide-channel-info[hidden] { display: none; }
+.tvguide-surf-frame {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+    pointer-events: none;
+}
+.tvguide-surf-frame[hidden] { display: none; }
+.tvguide-channel-info-name { font-size: clamp(20px, 3vw, 36px); font-weight: 700; }
+.tvguide-channel-info-program { margin-top: 6px; font-size: clamp(14px, 2vw, 22px); }
+.tvguide-channel-info-description {
+    max-width: 60ch;
+    margin-top: 8px;
+    font-size: clamp(13px, 1.5vw, 18px);
+    line-height: 1.4;
+    color: #d5dce5;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+}
+.tvguide-channel-info-description[hidden] { display: none; }
+
 /* Gallery Mode's fallback for Safari builds that reject element fullscreen.
    A fixed stage preserves TV Guide's controls while still filling the viewport. */
 .tvguide-player-stage.tvguide-pseudo-fullscreen {
@@ -1158,6 +1206,12 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     height: 100vh;
     height: 100dvh;
     border-radius: 0;
+}
+
+.tvguide-player-stage:fullscreen,
+.tvguide-player-stage:-webkit-full-screen,
+.tvguide-player-stage.tvguide-pseudo-fullscreen {
+    touch-action: none;
 }
 
 .tvguide-player-stage.tvguide-pseudo-fullscreen .tvguide-viewer-video {
@@ -1199,6 +1253,7 @@ body.stash-tvguide-scroll-soft-lock {
 
 .tvguide-player-controls {
     position: absolute;
+    z-index: 2;
     left: 0;
     right: 0;
     bottom: 0;
@@ -1240,6 +1295,7 @@ body.stash-tvguide-scroll-soft-lock {
 
 .tvguide-spinner {
     position: absolute;
+    z-index: 2;
     top: 10px;
     right: 10px;
     width: 20px;

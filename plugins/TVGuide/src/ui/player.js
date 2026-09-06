@@ -17,6 +17,8 @@ import { formatClock, formatDuration, formatRemaining } from '../domain/format.j
 import { sceneTitle } from '../api/scenes.js';
 import * as sel from '../state/selectors.js';
 import { ICONS } from './icons.js';
+import { surfChannel } from './channelSurf.js';
+import { createSurfTransition } from './surfTransition.js';
 
 export function createPlayer({ store, viewer }) {
     const bodyLockClass = 'stash-tvguide-active';
@@ -55,7 +57,65 @@ export function createPlayer({ store, viewer }) {
         fullscreen
     );
 
-    const stage = el('div', { class: 'tvguide-player-stage' }, viewer.element, spinner, controls);
+    const channelInfo = el('div', { class: 'tvguide-channel-info', hidden: true });
+    const channelLabel = el('div', { class: 'tvguide-channel-info-name' });
+    const programLabel = el('div', { class: 'tvguide-channel-info-program' });
+    const descriptionLabel = el('div', { class: 'tvguide-channel-info-description', hidden: true });
+    channelInfo.append(channelLabel, programLabel, descriptionLabel);
+    const stage = el('div', {
+        class: 'tvguide-player-stage', tabindex: '0',
+        'aria-label': 'Player: left and right change channels; space plays or pauses'
+    }, viewer.element, spinner, controls, channelInfo);
+    const surfTransition = createSurfTransition(stage, viewer.element);
+    const surfWithAnimation = (direction) => surfChannel(store, direction, () => surfTransition.play(direction));
+    let infoTimer = null;
+    let infoChannelId = null;
+    let infoWasFullscreen = false;
+
+    stage.addEventListener('pointerdown', (event) => {
+        if (!event.target.closest('button, input, select, textarea')) stage.focus({ preventScroll: true });
+    });
+
+    // One wheel burst / swipe changes one channel, including trackpad momentum.
+    let wheelTime = -Infinity;
+    let wheelDistance = 0;
+    let wheelUsed = false;
+    let touch = null;
+    const canSurf = () => !destroyed && store.getState().open
+        && !store.getState().managerOpen && isFullscreenActive();
+    const onWheel = (event) => {
+        if (!canSurf() || event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+        event.preventDefault();
+        const now = Date.now();
+        if (now - wheelTime > 250) { wheelDistance = 0; wheelUsed = false; }
+        wheelTime = now;
+        if (wheelUsed) return;
+        wheelDistance += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? stage.clientHeight || 800 : 1);
+        if (Math.abs(wheelDistance) < 60) return;
+        wheelUsed = true;
+        surfWithAnimation(wheelDistance > 0 ? 1 : -1);
+    };
+    const onTouchStart = (event) => {
+        touch = canSurf() && event.touches.length === 1
+            && !event.target.closest('button, input, select, textarea')
+            ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : null;
+    };
+    const onTouchMove = (event) => {
+        if (!touch || !canSurf()) return;
+        if (event.touches.length !== 1) { touch = null; return; }
+        const dx = event.touches[0].clientX - touch.x;
+        const dy = event.touches[0].clientY - touch.y;
+        if (Math.abs(dy) <= Math.abs(dx) || Math.abs(dy) < 60) return;
+        event.preventDefault();
+        touch = null;
+        surfWithAnimation(dy < 0 ? 1 : -1);
+    };
+    const endTouch = () => { touch = null; };
+    stage.addEventListener('wheel', onWheel, { passive: false });
+    stage.addEventListener('touchstart', onTouchStart, { passive: true });
+    stage.addEventListener('touchmove', onTouchMove, { passive: false });
+    stage.addEventListener('touchend', endTouch);
+    stage.addEventListener('touchcancel', endTouch);
     const progress = el('div', { class: 'tvguide-player-progress' });
     const caption = el('p', { class: 'tvguide-player-caption' });
 
@@ -227,9 +287,11 @@ export function createPlayer({ store, viewer }) {
      * when the stream reloads, so use the fixed-viewport fallback instead.
      */
     function applyFullscreen(on) {
+        if (!on) surfTransition.cancel();
         fullscreenWanted = on;
         if (on) {
             if (destroyed) return;
+            stage.focus({ preventScroll: true });
             renderControls({ ...store.getState(), playerMode: 'fullscreen' });
             if (isFullscreen() || pseudoFullscreen || nativeFullscreenPending) return;
             const requestGeneration = ++fullscreenRequestGeneration;
@@ -347,6 +409,8 @@ export function createPlayer({ store, viewer }) {
     };
 
     function renderControls(state) {
+        if (!state.open || state.playerMode !== 'fullscreen') surfTransition.cancel();
+        renderChannelInfo(state);
         const signature = `${state.viewerPaused}:${state.muted}:${state.playerMode}`;
         if (renderedControls === signature) return;
         renderedControls = signature;
@@ -366,6 +430,42 @@ export function createPlayer({ store, viewer }) {
         setControlIcon(fullscreen, state.playerMode === 'fullscreen' ? 'exitFullscreen' : 'fullscreen');
         fullscreen.setAttribute('aria-label', 'Fullscreen');
         fullscreen.setAttribute('aria-pressed', state.playerMode === 'fullscreen' ? 'true' : 'false');
+    }
+
+    function renderChannelInfo(state) {
+        const fullscreen = state.open && state.playerMode === 'fullscreen';
+        const channel = sel.tunedChannel(state);
+        const changed = infoChannelId !== state.tunedChannelId;
+        if (!fullscreen || !channel) {
+            clearTimeout(infoTimer);
+            channelInfo.hidden = true;
+        } else if (changed || !infoWasFullscreen) {
+            clearTimeout(infoTimer);
+            channelInfo.hidden = false;
+            infoTimer = setTimeout(() => { channelInfo.hidden = true; }, 3000);
+        }
+        infoChannelId = state.tunedChannelId;
+        infoWasFullscreen = fullscreen;
+        if (!channelInfo.hidden && channel) {
+            // Raw lineup numbering survives searches, collapsed groups and pins.
+            const number = state.allChannels.findIndex((item) => item.id === channel.id) + 1;
+            const label = `CH ${String(number).padStart(2, '0')} · ${channel.name}`;
+            const program = sel.tunedProgram(state);
+            const title = program ? sceneTitle(program.scene)
+                : sel.poolStatus(state, channel.id) === 'error' ? 'Unable to load programming'
+                : sel.poolStatus(state, channel.id) === 'ready' ? 'No programming' : 'Loading…';
+            if (channelLabel.textContent !== label) channelLabel.textContent = label;
+            if (programLabel.textContent !== title) programLabel.textContent = title;
+            const details = (program?.scene?.details || '').replace(/\s+/g, ' ').trim();
+            let description = details;
+            if (details.length > 180) {
+                const excerpt = details.slice(0, 179);
+                const boundary = excerpt.lastIndexOf(' ');
+                description = `${(boundary > 0 ? excerpt.slice(0, boundary) : excerpt).trimEnd()}…`;
+            }
+            descriptionLabel.hidden = !description;
+            if (descriptionLabel.textContent !== description) descriptionLabel.textContent = description;
+        }
     }
 
     stage.addEventListener('mouseenter', showControls);
@@ -398,6 +498,12 @@ export function createPlayer({ store, viewer }) {
             viewer.element.removeEventListener('webkitendfullscreen', onFullscreenChange);
             applyFullscreen(false);
             clearTimeout(hideTimer);
+            clearTimeout(infoTimer);
+            stage.removeEventListener('wheel', onWheel);
+            stage.removeEventListener('touchstart', onTouchStart);
+            stage.removeEventListener('touchmove', onTouchMove);
+            stage.removeEventListener('touchend', endTouch);
+            stage.removeEventListener('touchcancel', endTouch);
         },
 
         render(state) {

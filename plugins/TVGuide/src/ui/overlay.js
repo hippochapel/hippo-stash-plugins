@@ -29,6 +29,9 @@ export const BODY_CLASS = 'stash-tvguide-active';
 const SHORTCUTS = [
     ['← →', 'Previous / next programme'],
     ['↑ ↓', 'Previous / next channel'],
+    ['← → (player)', 'Tune previous / next channel'],
+    ['Space (player)', 'Play / pause'],
+    ['Scroll down / swipe up (fullscreen)', 'Tune next channel'],
     ['Page Up / Down', 'Pan by one screen'],
     ['Home / End', 'Jump to window edges'],
     ['N', 'Back to now'],
