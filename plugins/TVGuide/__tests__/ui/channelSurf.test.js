@@ -53,11 +53,44 @@ it('does not play an old pool response after surfing onward', () => {
 it('starts the transition before switching streams, and skips it when there is no destination', () => {
     const { store } = mount();
     const beforeTune = jest.fn(() => expect(store.getState().tunedChannelId).toBe('a'));
-    surfChannel(store, 1, beforeTune);
+    surfChannel(store, 1, { beforeTune });
     expect(beforeTune).toHaveBeenCalledTimes(1);
     expect(store.getState().tunedChannelId).toBe('b');
     const single = mount({ channels: [channels[0]] });
     beforeTune.mockClear();
-    surfChannel(single.store, 1, beforeTune);
+    surfChannel(single.store, 1, { beforeTune });
     expect(beforeTune).not.toHaveBeenCalled();
+});
+
+it('updates guide details without pinning when surfing a loaded channel', () => {
+    const { buildDaySchedule } = require('../../src/domain/schedule.js');
+    const focus = { channelId: 'a', timeMs: 0, source: 'hover' };
+    const { store } = mount({ focus, schedules: { b: buildDaySchedule('b', [{ id: 'scene', files: [{ duration: 100 }] }], '2026-09-06') } });
+    surfChannel(store, 1);
+    expect(store.getState().tunedChannelId).toBe('b');
+    expect(store.getState().focus).toMatchObject({ channelId: 'b', source: 'live' });
+    store.dispatch({ type: Events.FOCUS_CELL, channelId: 'a', timeMs: 0, source: 'hover' });
+    expect(store.getState().focus.channelId).toBe('a');
+});
+
+
+it('follows the new scene when its pool arrives without overwriting a subsequent hover', () => {
+    const { store } = mount({ focus: { channelId: 'a', timeMs: 0, source: 'sticky' } });
+    surfChannel(store, 1);
+    expect(store.getState().focus).toMatchObject({ channelId: 'b', source: 'live' });
+    store.dispatch({ type: Events.POOL_LOADED, channelId: 'b', scenes: [{ id: 'scene', files: [{ duration: 100 }] }] });
+    expect(store.getState().focus).toMatchObject({ channelId: 'b', source: 'live' });
+    store.dispatch({ type: Events.FOCUS_CELL, channelId: 'a', timeMs: 20, source: 'hover' });
+    store.dispatch({ type: Events.POOL_LOADED, channelId: 'b', scenes: [{ id: 'other', files: [{ duration: 100 }] }] });
+    expect(store.getState().focus).toEqual({ channelId: 'a', timeMs: 20, source: 'hover' });
+});
+
+
+it('queues the latest keyboard destination for the guide, including while fullscreen', () => {
+    const { store } = mount({ playerMode: 'fullscreen' });
+    surfChannel(store, 1, { scrollIntoView: true });
+    expect(store.getState().guideScrollChannelId).toBe('b');
+    surfChannel(store, 1, { scrollIntoView: true });
+    expect(store.getState().guideScrollChannelId).toBe('c');
+    expect(store.getState().playerMode).toBe('fullscreen');
 });

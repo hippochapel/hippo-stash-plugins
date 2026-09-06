@@ -1,7 +1,7 @@
 import { Events } from '../state/actions.js';
 
 /** Surf the current guide order, including wrapping at either end. */
-export function surfChannel(store, direction, beforeTune) {
+export function surfChannel(store, direction, { beforeTune, scrollIntoView = false } = {}) {
     const state = store.getState();
     const channels = state.channels;
     if (!channels.length) return;
@@ -12,7 +12,7 @@ export function surfChannel(store, direction, beforeTune) {
     const channelId = channels[next].id;
     if (channelId === state.tunedChannelId) return;
     beforeTune?.();
-    store.dispatch({ type: Events.TUNE, channelId, scrollIntoView: false });
+    store.dispatch({ type: Events.TUNE, channelId, scrollIntoView, pinDetails: false });
     // Fullscreen rows are not observed, so tuning must request programming.
     store.dispatch({ type: Events.POOL_REQUESTED, channelId });
 }

@@ -816,3 +816,63 @@ describe('fullscreen channel surfing', () => {
         } finally { jest.useRealTimers(); }
     });
 });
+
+describe('fullscreen controls and info visibility', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('starts hidden, reveals both on mouse movement or a video tap, and hides after inactivity', () => {
+        const { player, store } = mount();
+        const stage = q(player, '.tvguide-player-stage');
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'fullscreen' });
+        player.setMode('fullscreen');
+        const info = q(player, '.tvguide-channel-info');
+        expect(info.hidden).toBe(true);
+        expect(player.element.classList.contains('is-showing-controls')).toBe(false);
+        stage.dispatchEvent(new MouseEvent('mousemove'));
+        expect(info.hidden).toBe(false);
+        expect(player.element.classList.contains('is-showing-controls')).toBe(true);
+        jest.advanceTimersByTime(2000);
+        stage.dispatchEvent(new MouseEvent('mousemove'));
+        jest.advanceTimersByTime(2000);
+        expect(info.hidden).toBe(false);
+        jest.advanceTimersByTime(1000);
+        expect(info.hidden).toBe(true);
+        expect(player.element.classList.contains('is-showing-controls')).toBe(false);
+        q(player, 'video').click();
+        expect(info.hidden).toBe(false);
+        jest.advanceTimersByTime(3000);
+        expect(info.hidden).toBe(true);
+    });
+
+    it('keeps both visible while paused and resumes auto-hide after playback resumes', () => {
+        const { player, store } = mount({ playerMode: 'fullscreen' });
+        const info = q(player, '.tvguide-channel-info');
+        store.dispatch({ type: Events.SET_VIEWER_PAUSED, paused: true });
+        jest.advanceTimersByTime(10000);
+        q(player, '.tvguide-player-stage').dispatchEvent(new MouseEvent('mouseleave'));
+        jest.advanceTimersByTime(10000);
+        expect(info.hidden).toBe(false);
+        expect(player.element.classList.contains('is-showing-controls')).toBe(true);
+        store.dispatch({ type: Events.SET_VIEWER_PAUSED, paused: false });
+        jest.advanceTimersByTime(3000);
+        expect(info.hidden).toBe(true);
+        expect(player.element.classList.contains('is-showing-controls')).toBe(false);
+    });
+
+    it('shows info when entering fullscreen already paused', () => {
+        const { player } = mount({ playerMode: 'fullscreen', viewerPaused: true });
+        expect(q(player, '.tvguide-channel-info').hidden).toBe(false);
+    });
+
+    it('updates fullscreen channel info without removing descendants', () => {
+        const { player, store } = mount({ playerMode: 'fullscreen', allChannels: [channel('studio:1', 'One'), channel('studio:2', 'Two')] });
+        const stage = q(player, '.tvguide-player-stage');
+        const observer = new MutationObserver(() => {});
+        observer.observe(stage, { childList: true, subtree: true });
+        player.renderControls({ ...store.getState(), tunedChannelId: 'studio:2' });
+        expect(q(player, '.tvguide-channel-info').textContent).toContain('CH 02 · Two');
+        expect(observer.takeRecords()).toHaveLength(0);
+        observer.disconnect();
+    });
+});

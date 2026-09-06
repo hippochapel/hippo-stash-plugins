@@ -1736,7 +1736,10 @@
         const videoContainer = getVideoContainer();
         const media = getActiveGalleryMediaElement();
         return Boolean(galleryPseudoFullscreen || (
-            fullscreenElement
+            // Generic video lookup can return another plugin's video. An
+            // attached gallery overlay is required before claiming its surface.
+            overlay?.isConnected
+            && fullscreenElement
             && [frame, overlay, videoContainer, media].filter(Boolean).includes(fullscreenElement)
         ));
     }
@@ -1857,7 +1860,9 @@
 
     function exitGalleryFullscreen() {
         galleryPseudoFullscreen = false;
-        if (typeof document.exitFullscreen !== 'function') {
+        // Cleanup can run on unrelated page mutations (including TV Guide).
+        // Only release native fullscreen when one of our own surfaces owns it.
+        if (!isGalleryFullscreenActive() || typeof document.exitFullscreen !== 'function') {
             syncGalleryFullscreenState();
             return Promise.resolve();
         }
@@ -1874,7 +1879,7 @@
     }
 
     async function toggleGalleryFullscreen() {
-        if (getGalleryFullscreenElement() || galleryPseudoFullscreen) {
+        if (isGalleryFullscreenActive()) {
             await exitGalleryFullscreen();
             return;
         }
@@ -3057,7 +3062,7 @@
         galleryActive = false;
         if (_SessionEvents) _dispatchStoreEvent(_SessionEvents.exitGallery());
         document.getElementById(GALLERY_BUTTON_ID)?.classList.remove('active');
-        if (getGalleryFullscreenElement() || galleryPseudoFullscreen) {
+        if (isGalleryFullscreenActive()) {
             exitGalleryFullscreen();
         }
         cancelActiveGalleryRequest();

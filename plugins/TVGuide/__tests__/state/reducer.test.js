@@ -1366,11 +1366,10 @@ describe('clicking a programme', () => {
         expect(next.focus.timeMs).toBeLessThanOrEqual(NOON);
     });
 
-    it('leaves focus alone when tuning a channel with no programming', () => {
+    it('selects unpinned live details while the destination programming is loading', () => {
         const state = readyState();
-        const before = state.focus;
         const { state: next } = run(state, { type: Events.TUNE, channelId: 'studio:2' });
-        expect(next.focus).toBe(before);
+        expect(next.focus).toEqual({ channelId: 'studio:2', timeMs: NOON, source: 'live' });
     });
 
     it('tuning also lifts a pause', () => {

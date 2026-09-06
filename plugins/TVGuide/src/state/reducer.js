@@ -347,6 +347,10 @@ export function reduce(state, event) {
             };
             // The tuned channel's pool arriving is what actually starts playback.
             if (event.channelId === state.tunedChannelId) {
+                if (next.focus?.source === 'live' && next.focus.channelId === event.channelId) {
+                    const program = liveProgram(next, event.channelId, state.nowMs);
+                    next.focus = { ...next.focus, timeMs: program?.startMs ?? state.nowMs };
+                }
                 effects.push(...tuneEffects(next, event.channelId, state.nowMs));
             }
             return { state: next, effects };
@@ -397,13 +401,14 @@ export function reduce(state, event) {
             );
             // Move the details onto what is now playing, rather than leaving
             // them on whatever programme was last pinned there.
-            if (program) {
-                next.focus = {
-                    channelId: event.channelId,
-                    timeMs: program.startMs,
-                    source: 'sticky'
-                };
-            }
+            // Select the destination even before its pool arrives. Keeping the
+            // old focus here leaves the banner stale until a mouseleave resets it.
+            next.focus = {
+                channelId: event.channelId,
+                timeMs: program?.startMs ?? state.nowMs,
+                source: event.pinDetails === true ? 'sticky' : 'live'
+            };
+            next.liveClickCandidate = null;
 
             effects.push(...tuneEffects(next, event.channelId, state.nowMs));
             return { state: next, effects };

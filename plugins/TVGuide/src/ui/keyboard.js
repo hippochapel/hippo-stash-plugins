@@ -120,13 +120,15 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
             return;
         }
 
-        if (event.target?.closest?.('.tvguide-player-stage')) {
+        if (state.playerMode === 'fullscreen' || event.target?.closest?.('.tvguide-player-stage')) {
             if (['ArrowLeft', 'ArrowRight', ' ', 'Spacebar'].includes(event.key)) {
                 event.preventDefault();
                 event.stopPropagation();
+                // Host shortcuts can also listen on document in capture phase.
+                event.stopImmediatePropagation?.();
                 if (event.repeat) return;
                 if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-                    surfChannel(store, event.key === 'ArrowRight' ? 1 : -1);
+                    surfChannel(store, event.key === 'ArrowRight' ? 1 : -1, { scrollIntoView: true });
                 } else {
                     store.dispatch({ type: Events.SET_VIEWER_PAUSED, paused: !state.viewerPaused });
                 }

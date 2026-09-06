@@ -38,6 +38,7 @@ export function createList({ store, onRowVisible }) {
             : null;
 
     let renderedChannelIds = '';
+    let renderedFocusChannelId = null;
 
     return {
         element: root,
@@ -49,6 +50,19 @@ export function createList({ store, onRowVisible }) {
                 build(state);
             }
             update(state);
+            if (state.focus?.source === 'keyboard'
+                && state.focus.channelId !== renderedFocusChannelId
+                && state.playerMode !== 'fullscreen') {
+                const item = [...root.querySelectorAll('[data-channel-id]')]
+                    .find((node) => node.dataset.channelId === state.focus.channelId);
+                if (item) {
+                    if (item.offsetTop < root.scrollTop) root.scrollTop = item.offsetTop;
+                    else if (item.offsetTop + item.offsetHeight > root.scrollTop + root.clientHeight) {
+                        root.scrollTop = Math.max(0, item.offsetTop + item.offsetHeight - root.clientHeight);
+                    }
+                }
+            }
+            renderedFocusChannelId = state.focus?.channelId ?? null;
         },
 
         scrollChannelIntoView(channelId) {

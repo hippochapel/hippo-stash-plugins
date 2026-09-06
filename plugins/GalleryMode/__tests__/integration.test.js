@@ -2860,6 +2860,40 @@ describe('ImageGalleryMode', () => {
         expect(videoContainer.classList.contains('stash-gallery-container-fullscreen')).toBe(false);
     });
 
+    it('leaves TV Guide fullscreen alone when page mutation cleanup exits the gallery', async () => {
+        const stage = document.createElement('div');
+        stage.className = 'tvguide-player-stage';
+        stage.appendChild(document.createElement('video'));
+        document.body.appendChild(stage);
+        document.fullscreenElement = stage;
+
+        // The body observer calls this on every mutation outside a scene page.
+        gallery.exitGallery();
+        await gallery.exitGalleryFullscreen();
+
+        expect(fullscreenExitSpy).not.toHaveBeenCalled();
+        expect(document.fullscreenElement).toBe(stage);
+    });
+
+    it('clears pseudo fullscreen without closing another player native fullscreen', async () => {
+        setMobileGalleryLayout(true);
+        fullscreenSpy = jest.fn(() => Promise.reject(new Error('unsupported')));
+        gallery._applyState({ pluginSettings: { lb_enabled: false } });
+        const { player } = makePlayer();
+        setPlayerReadyState(player, 0);
+        const pendingFrame = gallery.showGalleryFrame(30, '0:30');
+        await resolveGalleryVideoFrame(player);
+        await pendingFrame;
+        await gallery.openGalleryFullscreen();
+        expect(document.getElementById('sprite-gallery-overlay').dataset.overlayFullscreen).toBe('true');
+        const stage = document.createElement('div');
+        document.body.appendChild(stage);
+        document.fullscreenElement = stage;
+        await gallery.exitGalleryFullscreen();
+        expect(fullscreenExitSpy).not.toHaveBeenCalled();
+        expect(document.fullscreenElement).toBe(stage);
+    });
+
     it('exitGalleryFullscreen works even when document.exitFullscreen throws', async () => {
         setMobileGalleryLayout(true);
         fullscreenSpy = jest.fn(() => Promise.reject(new Error('unsupported')));

@@ -523,6 +523,17 @@ describe('overlay', () => {
         return { store, overlay, viewer };
     }
 
+    it('updates details on a channel change and delayed pool arrival without any hover', () => {
+        const { store, overlay } = mountOverlay(baseState());
+        store.dispatch({ type: Events.TUNE, channelId: 'studio:2' });
+        expect(overlay.element.querySelector('.tvguide-banner-title')).toBeNull();
+        const nextScenes = scenes(4).map(scene => ({ ...scene, title: 'New channel programme' }));
+        store.dispatch({ type: Events.POOL_LOADED, channelId: 'studio:2', scenes: nextScenes });
+        expect(overlay.element.querySelector('.tvguide-banner-title').textContent).toBe('New channel programme');
+        expect(overlay.element.querySelector('.tvguide-unpin-details')).toBeNull();
+        overlay.destroy();
+    });
+
     const typeOptions = (overlay) =>
         [...overlay.element.querySelectorAll('.tvguide-type-select option')].map((b) => b.textContent);
 

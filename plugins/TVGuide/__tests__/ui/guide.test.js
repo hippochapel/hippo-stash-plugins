@@ -248,6 +248,23 @@ describe('the A-Z rail', () => {
         return scroll;
     }
 
+    it('keeps vertical keyboard focus visible without moving the outer overlay or chasing ticks', () => {
+        const { store, grid } = mount();
+        const scroll = layOut(grid);
+        Object.defineProperty(scroll, 'clientHeight', { value: 200, configurable: true });
+        grid.element.scrollTop = 35;
+        store.dispatch({ type: Events.MOVE_FOCUS, axis: 'channel', delta: 1 });
+        // Bravo ends at 228; scroll only enough to reveal its bottom.
+        expect(scroll.scrollTop).toBe(28);
+        expect(grid.element.scrollTop).toBe(35);
+        store.dispatch({ type: Events.MOVE_FOCUS, axis: 'channel', delta: -1 });
+        // Alpha begins at 76, immediately below the sticky 76px header.
+        expect(scroll.scrollTop).toBe(0);
+        scroll.scrollTop = 100;
+        store.dispatch({ type: Events.TICK, nowMs: NOON + 1000 });
+        expect(scroll.scrollTop).toBe(100);
+    });
+
     const railLetters = (grid) =>
         [...grid.element.querySelectorAll('.tvguide-rail-letter')].map((b) => b.textContent);
 

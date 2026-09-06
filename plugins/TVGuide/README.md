@@ -119,12 +119,16 @@ so the video and its controls remain available; theater remains the alternative
 that keeps the guide visible.
 
 Click the video or tab to the player to channel surf with `←` / `→`; `Space`
-pauses or resumes. Surfing follows the visible guide order, wraps at either end,
+pauses or resumes. Arrow-key changes scroll the guide to the tuned channel; in
+native fullscreen, the guide catches up when you exit. Surfing follows the
+visible guide order, wraps at either end,
 and respects search, filters, hidden channels and collapsed groups. In fullscreen,
 scroll down or swipe up for the next channel (reverse for the previous channel).
-Each wheel gesture or swipe changes one channel. A three-second TV-style overlay
-accompanies a short vertical slide transition (disabled for reduced motion).
-The next stream may still need to buffer. The overlay
+Each wheel gesture or swipe changes one channel with a short vertical slide
+transition (disabled for reduced motion). The next stream may still need to buffer.
+In fullscreen, controls and channel info appear on video taps, mouse movement or
+channel changes, and hide together after three seconds of inactivity. They stay
+visible while paused; entering fullscreen during playback leaves them hidden. The overlay
 shows the channel number, name, current programme and a description excerpt of
 up to 180 characters (at most three lines). Numbers start at 1 in the
 full lineup and do not change when filtering, collapsing groups or pinning.

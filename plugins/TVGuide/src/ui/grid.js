@@ -106,6 +106,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
             : null;
 
     let renderedRowSignature = '';
+    let renderedFocusChannelId = null;
     let dragChannelId = null;
     let railGroupKey = null;
     // Set while the grid moves DOM focus itself, so the block's own `onfocus`
@@ -134,6 +135,12 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
                 updateRows(state);
             }
 
+            if (state.focus?.source === 'keyboard'
+                && state.focus.channelId !== renderedFocusChannelId
+                && state.playerMode !== 'fullscreen') {
+                scrollChannelIntoView(state.focus.channelId, 'nearest');
+            }
+            renderedFocusChannelId = state.focus?.channelId ?? null;
             syncRail(state);
         },
 
@@ -508,6 +515,18 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
      * letter also scrolled the player off the top of the screen.
      */
     function scrollTo(element, block) {
+        if (block === 'nearest') {
+            const top = element.offsetTop;
+            const header = stickyHeaderHeight(element);
+            const bottom = top + element.offsetHeight;
+            if (top < scroll.scrollTop + header) {
+                scroll.scrollTop = Math.max(0, top - header);
+            } else if (bottom > scroll.scrollTop + scroll.clientHeight) {
+                scroll.scrollTop = Math.max(0, bottom - scroll.clientHeight);
+            }
+            syncRail(store.getState());
+            return;
+        }
         // 'start' puts the element at the top of the viewport, allowing for the
         // group header stuck over it. Centring a letter jump left a screenful of
         // the *previous* letter above the channel you asked for.

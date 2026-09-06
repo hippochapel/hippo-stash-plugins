@@ -19,6 +19,7 @@ import * as sel from '../state/selectors.js';
 import { ICONS } from './icons.js';
 import { surfChannel } from './channelSurf.js';
 import { createSurfTransition } from './surfTransition.js';
+import { createFullscreenDebug } from './fullscreenDebug.js';
 
 export function createPlayer({ store, viewer }) {
     const bodyLockClass = 'stash-tvguide-active';
@@ -62,15 +63,25 @@ export function createPlayer({ store, viewer }) {
     const programLabel = el('div', { class: 'tvguide-channel-info-program' });
     const descriptionLabel = el('div', { class: 'tvguide-channel-info-description', hidden: true });
     channelInfo.append(channelLabel, programLabel, descriptionLabel);
+    // Keep descendants connected when updating text inside native fullscreen.
+    const channelText = document.createTextNode('');
+    const programText = document.createTextNode('');
+    const descriptionText = document.createTextNode('');
+    channelLabel.appendChild(channelText);
+    programLabel.appendChild(programText);
+    descriptionLabel.appendChild(descriptionText);
     const stage = el('div', {
         class: 'tvguide-player-stage', tabindex: '0',
         'aria-label': 'Player: left and right change channels; space plays or pauses'
     }, viewer.element, spinner, controls, channelInfo);
     const surfTransition = createSurfTransition(stage, viewer.element);
-    const surfWithAnimation = (direction) => surfChannel(store, direction, () => surfTransition.play(direction));
-    let infoTimer = null;
+    const fullscreenDebug = createFullscreenDebug({ stage, video: viewer.element, getState: store.getState });
+    // Available from DevTools only; diagnostics do nothing until start() is called.
+    stage.tvguideFullscreenDebug = fullscreenDebug;
+    const surfWithAnimation = (direction) => surfChannel(store, direction, { beforeTune: () => surfTransition.play(direction) });
     let infoChannelId = null;
     let infoWasFullscreen = false;
+    let infoWasPaused = false;
 
     stage.addEventListener('pointerdown', (event) => {
         if (!event.target.closest('button, input, select, textarea')) stage.focus({ preventScroll: true });
@@ -399,17 +410,51 @@ export function createPlayer({ store, viewer }) {
      * left the controls permanently on screen; pointer events tell the truth.
      */
     let hideTimer = null;
-    const showControls = () => {
+    const hideNow = () => {
+        root.classList.remove('is-showing-controls');
+        channelInfo.hidden = true;
+    };
+    const scheduleHide = (delay = 3000) => {
         clearTimeout(hideTimer);
+        if (store.getState().playerMode === 'fullscreen' && store.getState().viewerPaused) return;
+        hideTimer = setTimeout(hideNow, delay);
+    };
+    const showControls = () => {
+        if (destroyed) return;
         root.classList.add('is-showing-controls');
+        renderChannelInfo(store.getState());
+        if (store.getState().playerMode === 'fullscreen') scheduleHide();
+        else clearTimeout(hideTimer);
     };
     const hideControls = () => {
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => root.classList.remove('is-showing-controls'), 120);
+        scheduleHide(store.getState().playerMode === 'fullscreen' ? 3000 : 120);
     };
+
+    function syncVisibility(state) {
+        const inFullscreen = state.open && state.playerMode === 'fullscreen';
+        const entering = inFullscreen && !infoWasFullscreen;
+        const changed = infoChannelId !== state.tunedChannelId;
+        if (entering || !state.open || (!inFullscreen && infoWasFullscreen)) {
+            clearTimeout(hideTimer);
+            hideNow();
+        }
+        if (inFullscreen) {
+            if (state.viewerPaused) {
+                clearTimeout(hideTimer);
+                root.classList.add('is-showing-controls');
+            } else if (!entering && (changed || infoWasPaused)) {
+                root.classList.add('is-showing-controls');
+                scheduleHide();
+            }
+        }
+        infoChannelId = state.tunedChannelId;
+        infoWasFullscreen = inFullscreen;
+        infoWasPaused = state.viewerPaused;
+    }
 
     function renderControls(state) {
         if (!state.open || state.playerMode !== 'fullscreen') surfTransition.cancel();
+        syncVisibility(state);
         renderChannelInfo(state);
         const signature = `${state.viewerPaused}:${state.muted}:${state.playerMode}`;
         if (renderedControls === signature) return;
@@ -435,17 +480,7 @@ export function createPlayer({ store, viewer }) {
     function renderChannelInfo(state) {
         const fullscreen = state.open && state.playerMode === 'fullscreen';
         const channel = sel.tunedChannel(state);
-        const changed = infoChannelId !== state.tunedChannelId;
-        if (!fullscreen || !channel) {
-            clearTimeout(infoTimer);
-            channelInfo.hidden = true;
-        } else if (changed || !infoWasFullscreen) {
-            clearTimeout(infoTimer);
-            channelInfo.hidden = false;
-            infoTimer = setTimeout(() => { channelInfo.hidden = true; }, 3000);
-        }
-        infoChannelId = state.tunedChannelId;
-        infoWasFullscreen = fullscreen;
+        channelInfo.hidden = !fullscreen || !channel || !root.classList.contains('is-showing-controls');
         if (!channelInfo.hidden && channel) {
             // Raw lineup numbering survives searches, collapsed groups and pins.
             const number = state.allChannels.findIndex((item) => item.id === channel.id) + 1;
@@ -454,8 +489,8 @@ export function createPlayer({ store, viewer }) {
             const title = program ? sceneTitle(program.scene)
                 : sel.poolStatus(state, channel.id) === 'error' ? 'Unable to load programming'
                 : sel.poolStatus(state, channel.id) === 'ready' ? 'No programming' : 'Loading…';
-            if (channelLabel.textContent !== label) channelLabel.textContent = label;
-            if (programLabel.textContent !== title) programLabel.textContent = title;
+            if (channelText.data !== label) channelText.data = label;
+            if (programText.data !== title) programText.data = title;
             const details = (program?.scene?.details || '').replace(/\s+/g, ' ').trim();
             let description = details;
             if (details.length > 180) {
@@ -464,15 +499,22 @@ export function createPlayer({ store, viewer }) {
                 description = `${(boundary > 0 ? excerpt.slice(0, boundary) : excerpt).trimEnd()}…`;
             }
             descriptionLabel.hidden = !description;
-            if (descriptionLabel.textContent !== description) descriptionLabel.textContent = description;
+            if (descriptionText.data !== description) descriptionText.data = description;
         }
     }
 
-    stage.addEventListener('mouseenter', showControls);
+    stage.addEventListener('mouseenter', () => {
+        if (store.getState().playerMode !== 'fullscreen') showControls();
+    });
     stage.addEventListener('mousemove', showControls);
     stage.addEventListener('mouseleave', hideControls);
     // Keyboard users need them too, and touch has no hover to reveal with.
-    stage.addEventListener('focusin', showControls);
+    stage.addEventListener('focusin', (event) => {
+        if (store.getState().playerMode !== 'fullscreen' || event.target !== stage) showControls();
+    });
+    stage.addEventListener('click', (event) => {
+        if (!event.target.closest('button')) showControls();
+    });
     stage.addEventListener('focusout', hideControls);
     stage.addEventListener('touchstart', showControls, { passive: true });
 
@@ -490,6 +532,7 @@ export function createPlayer({ store, viewer }) {
         },
 
         destroy() {
+            fullscreenDebug.stop();
             destroyed = true;
             document.removeEventListener('fullscreenchange', onFullscreenChange);
             document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -498,7 +541,6 @@ export function createPlayer({ store, viewer }) {
             viewer.element.removeEventListener('webkitendfullscreen', onFullscreenChange);
             applyFullscreen(false);
             clearTimeout(hideTimer);
-            clearTimeout(infoTimer);
             stage.removeEventListener('wheel', onWheel);
             stage.removeEventListener('touchstart', onTouchStart);
             stage.removeEventListener('touchmove', onTouchMove);

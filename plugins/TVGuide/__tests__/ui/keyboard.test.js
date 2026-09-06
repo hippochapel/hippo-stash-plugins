@@ -352,7 +352,7 @@ describe('player keyboard scope', () => {
             return event;
         };
         send('ArrowRight');
-        expect(dispatch).toHaveBeenCalledWith({ type: Events.TUNE, channelId: 'b', scrollIntoView: false });
+        expect(dispatch).toHaveBeenCalledWith({ type: Events.TUNE, channelId: 'b', scrollIntoView: true, pinDetails: false });
         dispatch.mockClear();
         send(' ');
         expect(dispatch).toHaveBeenCalledWith({ type: Events.SET_VIEWER_PAUSED, paused: true });
@@ -362,4 +362,24 @@ describe('player keyboard scope', () => {
         send('ArrowRight', { metaKey: true });
         expect(dispatch).not.toHaveBeenCalled();
     });
+});
+
+it('owns fullscreen arrow keys even when focus falls to the document, blocking later host shortcuts', () => {
+    const dispatch = jest.fn();
+    const state = { ...createInitialState(), open: true, playerMode: 'fullscreen', channels: [{ id: 'a' }, { id: 'b' }], tunedChannelId: 'a' };
+    const handle = createKeyboardHandler({ store: { getState: () => state, dispatch } });
+    const host = jest.fn();
+    document.addEventListener('keydown', handle, true);
+    document.addEventListener('keydown', host, true);
+    try {
+        const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+        document.body.dispatchEvent(event);
+        expect(dispatch).toHaveBeenCalledWith({ type: Events.TUNE, channelId: 'b', scrollIntoView: true, pinDetails: false });
+        expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: Events.SET_PLAYER_MODE }));
+        expect(event.defaultPrevented).toBe(true);
+        expect(host).not.toHaveBeenCalled();
+    } finally {
+        document.removeEventListener('keydown', handle, true);
+        document.removeEventListener('keydown', host, true);
+    }
 });
