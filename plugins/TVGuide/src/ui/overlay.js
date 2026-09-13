@@ -222,6 +222,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
     let mountedLayout = null;
     let lockedScrollY = 0;
     let renderedMode = null;
+    const modeScrollPositions = new Map();
 
     function panButton(label, ariaLabel, onclick) {
         return el('button', { class: 'tvguide-pan', type: 'button', 'aria-label': ariaLabel, onclick }, label);
@@ -291,19 +292,17 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
                 player.renderControls(state);
                 return;
             }
+            const modeChanged = renderedMode !== null && state.playerMode !== renderedMode;
+            const guideScroller = sel.isGridLayout(state)
+                ? grid.element.querySelector('.tvguide-grid-scroll') : list.element;
+            const guideScrollTop = modeChanged ? guideScroller.scrollTop : null;
+            if (modeChanged && renderedMode) modeScrollPositions.set(renderedMode, root.scrollTop);
+            renderedMode = state.playerMode;
             root.classList.toggle('is-theater', state.playerMode === 'theater');
             root.classList.toggle('has-player', Boolean(state.settings.guide_autoplay));
             // On the overlay, not the player: the header sizes itself from this
             // and custom properties only inherit downwards.
             root.style.setProperty('--tvguide-player-width', `${state.playerWidthPx}px`);
-
-            // Theater makes the overlay itself scrollable, and it inherits
-            // whatever the corner layout had scrolled to -- which put the guide
-            // on screen and the newly-enlarged player above it.
-            if (state.playerMode !== renderedMode) {
-                if (state.playerMode === 'theater') root.scrollTop = 0;
-                renderedMode = state.playerMode;
-            }
 
             // Grid and list are two renderers over one state; only the one in
             // use is in the DOM, so neither pays for the other.
@@ -332,6 +331,13 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             }
             manager.render(state);
             player.render(state);
+            if (modeChanged) {
+                // Restore after layout updates, which can clamp scroll offsets.
+                // The channel position is shared; each mode remembers its own
+                // outer position so returning to theater does not jump to video.
+                if (!state.guideScrollChannelId) guideScroller.scrollTop = guideScrollTop;
+                root.scrollTop = modeScrollPositions.get(state.playerMode) || 0;
+            }
             renderStatus(state);
         },
 

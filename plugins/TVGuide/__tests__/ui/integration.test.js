@@ -762,6 +762,28 @@ describe('overlay', () => {
         expect(overlay.element.querySelector('.tvguide-player').hidden).toBe(true);
     });
 
+    it.each(['grid', 'list'])('preserves the %s channel position and restores theater scrolling on mode changes', (layout) => {
+        const { store, overlay } = mountOverlay(baseState({ layout }));
+        const scroller = overlay.element.querySelector(layout === 'grid' ? '.tvguide-grid-scroll' : '.tvguide-list');
+        scroller.scrollTop = 420;
+        // Emulate layout clamping the inner scroller during the class change.
+        const toggle = overlay.element.classList.toggle.bind(overlay.element.classList);
+        jest.spyOn(overlay.element.classList, 'toggle').mockImplementation((name, on) => {
+            if (name === 'is-theater') scroller.scrollTop = 0;
+            return toggle(name, on);
+        });
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'theater' });
+        expect(scroller.scrollTop).toBe(420);
+        overlay.element.scrollTop = 500;
+        scroller.scrollTop = 680;
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'corner' });
+        expect(scroller.scrollTop).toBe(680);
+        expect(overlay.element.scrollTop).toBe(0);
+        store.dispatch({ type: Events.SET_PLAYER_MODE, mode: 'theater' });
+        expect(scroller.scrollTop).toBe(680);
+        expect(overlay.element.scrollTop).toBe(500);
+    });
+
     it('does not re-render the guide while native fullscreen is pending', () => {
         const state = baseState({ playerMode: 'fullscreen' });
         const { store, overlay } = mountOverlay(state);

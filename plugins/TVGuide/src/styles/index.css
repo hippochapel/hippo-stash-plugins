@@ -1121,17 +1121,31 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     position: absolute;
     left: -3px;
     bottom: -3px;
-    width: 16px;
-    height: 16px;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
     cursor: nesw-resize;
     touch-action: none;
-    background:
-        linear-gradient(45deg, transparent 42%, var(--tvguide-text-dim) 42%, var(--tvguide-text-dim) 54%, transparent 54%);
-    opacity: 0.5;
+    background: transparent;
+    opacity: 0;
+    pointer-events: none;
 }
 
-.tvguide-player-resizer:hover,
-.tvguide-player-resizer:focus-visible { opacity: 1; }
+.tvguide-player-resizer::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    width: 8px;
+    height: 8px;
+    border-bottom: 2px solid #9cabc0;
+    border-left: 2px solid #9cabc0;
+    border-bottom-left-radius: 3px;
+}
+.tvguide-player-resizer:hover::after { border-color: #fff; }
+
+.tvguide-player-picture.is-editing > .tvguide-player-resizer,
+.tvguide-player-resizer:focus-visible { opacity: 1; pointer-events: auto; }
 
 /* Full width in both, so there is no width left to drag. */
 .tvguide-overlay.is-theater .tvguide-player-resizer,
@@ -1165,12 +1179,12 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     z-index: 5;
     max-width: calc(100% - 48px);
     box-sizing: border-box;
-    padding: 16px 22px;
+    padding: 16px 52px 16px 22px;
     border-left: 4px solid #68b5ff;
     border-radius: 6px;
     background: rgba(8, 14, 24, .88);
     color: #fff;
-    pointer-events: none;
+    pointer-events: auto;
     overflow-wrap: anywhere;
 }
 
@@ -1186,7 +1200,7 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     pointer-events: none;
 }
 .tvguide-playback-error[hidden] { display: none; }
-.tvguide-channel-info-resizer {
+.tvguide-channel-info .tvguide-channel-info-resizer {
     position: absolute;
     top: 0;
     right: 0;
@@ -1197,9 +1211,9 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     padding: 0;
     border: 0;
     background: transparent;
+    box-shadow: none;
     cursor: nesw-resize;
     touch-action: none;
-    pointer-events: auto;
 }
 .tvguide-channel-info-resizer::after {
     content: '';
@@ -1216,17 +1230,22 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
 .tvguide-channel-info-resizer:focus-visible { outline: 2px solid #68b5ff; outline-offset: -2px; }
 .tvguide-channel-info.is-minimized { width: auto; height: auto; }
 .tvguide-channel-info.is-minimized .tvguide-channel-info-resizer { display: none; }
-.tvguide-channel-info-heading { display: flex; align-items: center; gap: 14px; padding-right: 28px; }
-.tvguide-channel-info-toggle {
+.tvguide-channel-info-heading { display: flex; align-items: center; gap: 14px; }
+.tvguide-channel-info-name { min-width: 0; }
+.tvguide-channel-info .tvguide-channel-info-toggle {
     position: absolute;
     top: 22px;
     right: 12px;
-    pointer-events: auto;
+    display: grid;
+    place-items: center;
     flex-shrink: 0;
     margin-left: auto;
     min-width: 24px;
     min-height: 24px;
-    padding: 0 4px;
+    width: 24px;
+    height: 24px;
+    box-sizing: border-box;
+    padding: 0;
     color: #fff;
     background: rgba(255, 255, 255, .12);
     border: 1px solid rgba(255, 255, 255, .3);
@@ -1239,9 +1258,15 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
 .tvguide-channel-info-details[hidden],
 .tvguide-channel-info-time[hidden],
 .tvguide-channel-info.is-minimized .tvguide-channel-info-studio { display: none; }
-.tvguide-channel-info.is-minimized { padding: 8px 12px; }
+.tvguide-channel-info.is-minimized { padding: 8px 48px 8px 12px; min-height: 40px; }
 .tvguide-channel-info.is-minimized .tvguide-channel-info-toggle { top: 8px; }
 .tvguide-channel-info.is-minimized .tvguide-channel-info-name { font-size: clamp(16px, 2vw, 22px); }
+.tvguide-channel-info-toggle,
+.tvguide-channel-info-resizer { opacity: 0; pointer-events: none; }
+.tvguide-channel-info.is-editing .tvguide-channel-info-toggle,
+.tvguide-channel-info.is-editing .tvguide-channel-info-resizer,
+.tvguide-channel-info-toggle:focus-visible,
+.tvguide-channel-info-resizer:focus-visible { opacity: 1; pointer-events: auto; }
 .tvguide-channel-info-time { margin-top: 6px; color: #d5dce5; font-size: clamp(13px, 1.5vw, 18px); }
 .tvguide-channel-info-studio {
     width: clamp(48px, 8vw, 88px);
@@ -1467,7 +1492,9 @@ body.stash-tvguide-scroll-soft-lock {
 
 .tvguide-overlay.is-theater .tvguide-stage {
     flex: 0 0 auto;
-    min-height: 70vh;
+    height: 70vh;
+    height: 70dvh;
+    min-height: 0;
 }
 
 /* The overlay is deliberately left untouched while Safari enters native

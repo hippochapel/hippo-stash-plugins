@@ -21,6 +21,7 @@ import { ICONS } from './icons.js';
 import { surfChannel } from './channelSurf.js';
 import { createSurfTransition } from './surfTransition.js';
 import { createFullscreenDebug } from './fullscreenDebug.js';
+import { revealControlsOnInteraction } from './revealControls.js';
 
 export function createPlayer({ store, viewer }) {
     const bodyLockClass = 'stash-tvguide-active';
@@ -63,6 +64,7 @@ export function createPlayer({ store, viewer }) {
     );
 
     const channelInfo = el('div', { class: 'tvguide-channel-info', hidden: true });
+    revealControlsOnInteraction(channelInfo);
     let infoResize = null;
     const infoResizer = el('button', {
         class: 'tvguide-channel-info-resizer', type: 'button',
@@ -203,6 +205,7 @@ export function createPlayer({ store, viewer }) {
     // Keep the grip outside the stage's clipping and fullscreen boundary, but
     // anchor it to the picture rather than the taller header-sized panel.
     const picture = el('div', { class: 'tvguide-player-picture' }, stage, resizer);
+    revealControlsOnInteraction(picture, { ignore: (target) => Boolean(target.closest('.tvguide-channel-info')) });
     const root = el('div', { class: 'tvguide-player' }, picture, progress, caption);
 
     function sizeChannelInfo(width, height) {

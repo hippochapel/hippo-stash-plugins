@@ -137,7 +137,10 @@ times, minutes remaining, performer names (up to two lines), and a description
 excerpt (three lines by default, adjusting to the available space when resized). Times follow the clock
 setting, and minutes remaining freeze while paused. Use the minus button to
 minimize the overlay to the channel name and the plus button to expand it;
-this preference is saved across sessions. Drag the expanded overlay's top-right
+this preference is saved across sessions. Hover or tap the overlay to reveal its
+buttons and resize handle; tap again to hide them. The miniplayer resize handle
+appears the same way when you hover or tap its picture. Keyboard focus also
+reveals these controls. Drag the expanded overlay's top-right
 corner to resize it, or focus the handle and use the arrow keys (Shift for larger
 steps). Its bottom-left corner stays anchored above the controls. To hide it entirely, disable **Show
 Channel Info Overlay** in Stash's TV Guide plugin settings and reload the page.
