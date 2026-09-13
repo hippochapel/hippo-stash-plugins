@@ -80,6 +80,127 @@ describe('createViewer', () => {
         return { viewer, control };
     };
 
+    describe('alternate streams', () => {
+        const streams = [
+            { url: '/scene/1202/stream.mpd', mime_type: 'application/dash+xml' },
+            { url: '/scene/1202/stream.mp4?resolution=STANDARD', mime_type: 'video/mp4' },
+            { url: '/scene/1202/stream.webm', mime_type: 'video/webm' }
+        ];
+        const setup = (getStreams = jest.fn(async () => streams)) => {
+            const viewer = createViewer({ now: () => clock, getStreams });
+            const control = stubVideo(viewer.element);
+            viewer.element.canPlayType = jest.fn((mime) => mime.startsWith('video/') ? 'probably' : '');
+            viewer.tune(scene({ id: '1202' }), 90000, true);
+            const fail = async () => {
+                Object.defineProperty(viewer.element, 'error', { value: { code: 4 }, configurable: true });
+                viewer.element.dispatchEvent(new Event('error'));
+                await Promise.resolve();
+                await Promise.resolve();
+                Object.defineProperty(viewer.element, 'error', { value: null, configurable: true });
+            };
+            return { viewer, control, fail, getStreams };
+        };
+
+        it('loads compatible transcodes at the live offset and preserves their timeline on retune', async () => {
+            const { viewer, fail, getStreams } = setup();
+            clock += 5000;
+            await fail();
+            expect(getStreams).toHaveBeenCalledWith('1202');
+            expect(viewer.element.getAttribute('src')).toBe('/scene/1202/stream.mp4?resolution=STANDARD&start=95');
+            expect(viewer._streamBaseSeconds()).toBe(95);
+            viewer.element.dispatchEvent(new Event('loadedmetadata'));
+            expect(viewer.element.currentTime).toBe(0);
+            viewer.tune(scene({ id: '1202' }), 180000, true);
+            expect(viewer.element.getAttribute('src')).toContain('start=180');
+            expect(getStreams).toHaveBeenCalledTimes(1);
+        });
+
+        it('tries each compatible source once and reports exhaustion', async () => {
+            const { viewer, fail, getStreams } = setup();
+            const events = [];
+            viewer.subscribe((event) => events.push(event));
+            await fail();
+            await fail();
+            expect(viewer.element.getAttribute('src')).toBe('/scene/1202/stream.webm?start=90');
+            await fail();
+            expect(events.at(-1).type).toBe('error');
+            expect(getStreams).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps the active transcode for redundant tunes and temporary fullscreen drift', async () => {
+            const { viewer, control, fail } = setup();
+            await fail();
+            viewer.element.load.mockClear();
+            control.setTime(10);
+            clock += 10000;
+            viewer.tune(scene({ id: '1202' }), 100000, true);
+            expect(viewer.element.load).not.toHaveBeenCalled();
+            clock += 5000;
+            viewer._checkDrift();
+            expect(viewer.element.load).not.toHaveBeenCalled();
+            expect(viewer.element.getAttribute('src')).toContain('start=90');
+        });
+
+        it('corrects transcode drift within the available stream without reloading', async () => {
+            const { viewer, control, fail } = setup();
+            await fail();
+            Object.defineProperty(viewer.element, 'seekable', {
+                value: { length: 1, start: () => 0, end: () => 60 }, configurable: true
+            });
+            viewer.element.load.mockClear();
+            clock += 20000;
+            control.setTime(10);
+            viewer._checkDrift();
+            expect(control.getTime()).toBe(20);
+            expect(viewer.element.load).not.toHaveBeenCalled();
+        });
+
+        it.each(['stop', 'tune'])('ignores late stream responses after %s', async (action) => {
+            let resolve;
+            const getStreams = jest.fn(() => new Promise((done) => { resolve = done; }));
+            const { viewer, fail } = setup(getStreams);
+            await fail();
+            if (action === 'stop') viewer.stop();
+            else viewer.tune(scene({ id: 'next', paths: { stream: '/scene/next/stream' } }), 0, true);
+            resolve(streams);
+            await Promise.resolve();
+            expect(viewer.element.getAttribute('src')).toBe(action === 'stop' ? null : '/scene/next/stream');
+        });
+
+        it('keeps a paused viewer paused while an alternative loads', async () => {
+            const { viewer, fail } = setup();
+            clock += 5000;
+            viewer.setPaused(true);
+            clock += 30000;
+            viewer.element.play.mockClear();
+            await fail();
+            expect(viewer.element.getAttribute('src')).toContain('start=95');
+            expect(viewer.element.play).not.toHaveBeenCalled();
+        });
+
+        it('handles a rejected stream lookup', async () => {
+            const { viewer, fail } = setup(async () => { throw new Error('offline'); });
+            const events = [];
+            viewer.subscribe((event) => events.push(event));
+            await fail();
+            expect(events.at(-1).type).toBe('error');
+        });
+
+        it('falls back on NotSupportedError but leaves autoplay rejection alone', async () => {
+            const { viewer, getStreams } = setup();
+            viewer.element.play = jest.fn(() => Promise.reject({ name: 'NotAllowedError' }));
+            viewer.setPaused(false);
+            await Promise.resolve();
+            expect(getStreams).not.toHaveBeenCalled();
+            viewer.element.play = jest.fn().mockRejectedValueOnce({ name: 'NotSupportedError' }).mockResolvedValue(undefined);
+            viewer.setPaused(false);
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(getStreams).toHaveBeenCalledTimes(1);
+            expect(viewer.element.getAttribute('src')).toContain('/stream.mp4');
+        });
+    });
+
     it('creates a muted, inline video element', () => {
         const { viewer } = build();
         expect(viewer.element.tagName).toBe('VIDEO');

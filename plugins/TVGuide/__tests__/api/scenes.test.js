@@ -1,4 +1,12 @@
-import { fetchScenePool, sceneTitle, SCENE_POOL_QUERY } from '../../src/api/scenes.js';
+import { fetchScenePool, fetchSceneStreams, sceneTitle, SCENE_POOL_QUERY } from '../../src/api/scenes.js';
+
+it('fetches alternate stream URLs for only the failed scene', async () => {
+    const streams = [{ url: '/scene/1202/stream.mp4', mime_type: 'video/mp4' }];
+    const gql = jest.fn(async () => ({ findScene: { sceneStreams: streams } }));
+    expect(await fetchSceneStreams(gql, '1202')).toEqual(streams);
+    expect(gql.mock.calls[0][1]).toEqual({ id: '1202' });
+    expect(await fetchSceneStreams(async () => ({ findScene: null }), 'missing')).toEqual([]);
+});
 
 describe('fetchScenePool', () => {
     const filter = { studios: { value: ['1'], modifier: 'INCLUDES' } };

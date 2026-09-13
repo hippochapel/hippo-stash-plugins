@@ -1393,6 +1393,17 @@ describe('clicking a programme', () => {
 });
 
 describe('the player size', () => {
+    it('persists and restores the channel info minimized preference', () => {
+        const minimized = run(readyState(), { type: Events.TOGGLE_CHANNEL_INFO });
+        expect(minimized.state.channelInfoMinimized).toBe(true);
+        expect(minimized.effects).toContainEqual({ type: 'persist', key: STORAGE_KEYS.channelInfoMinimized, value: 'true' });
+        const restored = run(readyState(), { type: Events.PREFS_LOADED, prefs: {}, channelInfoMinimized: true });
+        expect(restored.state.channelInfoMinimized).toBe(true);
+        const expanded = run(restored.state, { type: Events.TOGGLE_CHANNEL_INFO });
+        expect(expanded.state.channelInfoMinimized).toBe(false);
+        expect(expanded.effects).toContainEqual({ type: 'persist', key: STORAGE_KEYS.channelInfoMinimized, value: 'false' });
+    });
+
     it('clamps and persists a new width', () => {
         const { state, effects } = run(readyState(), { type: Events.SET_PLAYER_WIDTH, px: 400.4 });
         expect(state.playerWidthPx).toBe(400);

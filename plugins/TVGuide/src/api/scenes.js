@@ -17,7 +17,7 @@ export const SCENE_POOL_QUERY = `query TVGuideScenePool($filter: SceneFilterType
       date
       paths { screenshot stream }
       files { duration }
-      studio { name }
+      studio { name image_path }
       performers { id name image_path }
       tags { id name image_path }
     }
@@ -35,6 +35,14 @@ export async function fetchScenePool(gql, sceneFilter, poolCap) {
         find: { per_page: poolCap, page: 1, sort: 'id', direction: 'ASC' }
     });
     return data?.findScenes?.scenes || [];
+}
+
+/** Resolve alternate streams only when direct playback fails. */
+export async function fetchSceneStreams(gql, id) {
+    const data = await gql(`query TVGuideSceneStreams($id: ID!) {
+        findScene(id: $id) { sceneStreams { url mime_type } }
+    }`, { id });
+    return data?.findScene?.sceneStreams || [];
 }
 
 /** Untitled scenes still need something to show in the guide. */

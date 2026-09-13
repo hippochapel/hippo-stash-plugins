@@ -821,6 +821,138 @@ describe('fullscreen controls and info visibility', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
 
+    it('shows playback failures and clears them when another stream starts loading', () => {
+        const { player, emit } = mount();
+        const error = q(player, '.tvguide-playback-error');
+        emit({ type: 'error', message: 'Unable to play this scene.' });
+        expect(error.hidden).toBe(false);
+        expect(error.textContent).toBe('Unable to play this scene.');
+        expect(player.element.classList.contains('is-loading')).toBe(false);
+        emit({ type: 'loading' });
+        expect(error.hidden).toBe(true);
+        expect(player.element.classList.contains('is-loading')).toBe(true);
+    });
+
+    it('reflows the full description to the available height when resized', () => {
+        const details = 'A long description that should reveal more text as the overlay grows. '.repeat(20).trim();
+        const { player } = mount({
+            playerMode: 'fullscreen', viewerPaused: true,
+            schedules: { 'studio:1': buildDaySchedule('studio:1', scenes().map((scene) => ({ ...scene, details })), DAY_KEY) }
+        });
+        const info = q(player, '.tvguide-channel-info');
+        const description = q(player, '.tvguide-channel-info-description');
+        const grip = q(player, '.tvguide-channel-info-resizer');
+        const time = q(player, '.tvguide-channel-info-time');
+        expect(description.textContent).toBe(details);
+        expect(description.style.getPropertyValue('--tvguide-description-lines')).toBe('3');
+        description.style.lineHeight = '20px';
+        description.style.marginTop = '8px';
+        info.style.paddingBottom = '16px';
+        const height = () => parseFloat(info.style.getPropertyValue('--tvguide-info-height')) || 240;
+        info.getBoundingClientRect = () => ({ left: 24, bottom: 644, width: 400, height: height() });
+        q(player, '.tvguide-player-stage').getBoundingClientRect = () => ({ top: 0, right: 1000 });
+        time.getBoundingClientRect = () => ({ bottom: 644 - height() + 180 });
+        const resize = (key) => grip.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey: true, bubbles: true }));
+        resize('ArrowUp');
+        expect(description.style.getPropertyValue('--tvguide-description-lines')).toBe('3');
+        resize('ArrowUp');
+        expect(description.style.getPropertyValue('--tvguide-description-lines')).toBe('5');
+        resize('ArrowDown');
+        expect(description.style.getPropertyValue('--tvguide-description-lines')).toBe('3');
+        resize('ArrowDown');
+        expect(description.style.getPropertyValue('--tvguide-description-lines')).toBe('1');
+        resize('ArrowDown');
+        expect(description.hidden).toBe(true);
+        resize('ArrowUp');
+        expect(description.hidden).toBe(false);
+        expect(description.textContent).toBe(details);
+    });
+
+    it('resizes from the top right, clamps to the screen, and stops on cancellation', () => {
+        const { player, store } = mount({ playerMode: 'fullscreen' });
+        const info = q(player, '.tvguide-channel-info');
+        const stage = q(player, '.tvguide-player-stage');
+        const grip = q(player, '.tvguide-channel-info-resizer');
+        stage.getBoundingClientRect = () => ({ top: 0, right: 1000 });
+        info.getBoundingClientRect = () => ({ left: 24, bottom: 644, width: 400, height: 240 });
+        grip.dispatchEvent(new MouseEvent('pointerdown', { clientX: 424, clientY: 404, bubbles: true, cancelable: true }));
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 524, clientY: 354 }));
+        expect(info.style.getPropertyValue('--tvguide-info-width')).toBe('500px');
+        expect(info.style.getPropertyValue('--tvguide-info-height')).toBe('290px');
+        jest.advanceTimersByTime(4000);
+        expect(info.hidden).toBe(false);
+        expect(store.getState().tunedChannelId).toBe('studio:1');
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 5000, clientY: -5000 }));
+        expect(info.style.getPropertyValue('--tvguide-info-width')).toBe('952px');
+        expect(info.style.getPropertyValue('--tvguide-info-height')).toBe('620px');
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: -5000, clientY: 5000 }));
+        expect(info.style.getPropertyValue('--tvguide-info-width')).toBe('280px');
+        expect(info.style.getPropertyValue('--tvguide-info-height')).toBe('160px');
+        window.dispatchEvent(new MouseEvent('pointercancel'));
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 524, clientY: 354 }));
+        expect(info.style.getPropertyValue('--tvguide-info-width')).toBe('280px');
+        jest.advanceTimersByTime(3000);
+        expect(info.hidden).toBe(true);
+    });
+
+    it('supports keyboard resizing and removes drag listeners on destruction', () => {
+        const { player } = mount({ playerMode: 'fullscreen', viewerPaused: true });
+        const info = q(player, '.tvguide-channel-info');
+        const grip = q(player, '.tvguide-channel-info-resizer');
+        q(player, '.tvguide-player-stage').getBoundingClientRect = () => ({ top: 0, right: 1000 });
+        info.getBoundingClientRect = () => ({ left: 24, bottom: 644, width: 400, height: 240 });
+        grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true }));
+        expect(info.style.getPropertyValue('--tvguide-info-height')).toBe('280px');
+        grip.dispatchEvent(new MouseEvent('pointerdown', { clientX: 424, clientY: 404, bubbles: true }));
+        player.destroy();
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 600, clientY: 200 }));
+        expect(info.style.getPropertyValue('--tvguide-info-height')).toBe('280px');
+    });
+
+    it('shows scheduled times and remaining minutes using the playback clock and clock preference', () => {
+        const { player, store } = mount({ playerMode: 'fullscreen', viewerPaused: true, nowMs: NOON + 5 * 60000 });
+        const time = q(player, '.tvguide-channel-info-time');
+        expect(time.textContent).toBe('12:00 – 12:30 · 25 min left');
+        player.renderControls({ ...store.getState(), nowMs: NOON + 10 * 60000 });
+        expect(time.textContent).toBe('12:00 – 12:30 · 20 min left');
+        player.renderControls({
+            ...store.getState(), nowMs: NOON + 10 * 60000, pausedAtMs: NOON + 5 * 60000,
+            settings: { ...store.getState().settings, guide_12_hour_clock: true }
+        });
+        expect(time.textContent).toBe('12:00 PM – 12:30 PM · 25 min left');
+        player.renderControls({ ...store.getState(), schedules: {} });
+        expect(time.hidden).toBe(true);
+        expect(time.textContent).toBe('');
+    });
+
+    it('minimizes and expands in place, including a restored minimized preference', () => {
+        const { player, store } = mount({ playerMode: 'fullscreen', viewerPaused: true, channelInfoMinimized: true });
+        const details = q(player, '.tvguide-channel-info-details');
+        const toggle = q(player, '.tvguide-channel-info-toggle');
+        expect(details.hidden).toBe(true);
+        expect(toggle.getAttribute('aria-label')).toBe('Expand channel info');
+        const observer = new MutationObserver(() => {});
+        observer.observe(q(player, '.tvguide-channel-info'), { childList: true, subtree: true });
+        toggle.click();
+        expect(store.getState().channelInfoMinimized).toBe(false);
+        expect(details.hidden).toBe(false);
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        toggle.click();
+        expect(details.hidden).toBe(true);
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(store.getState().viewerPaused).toBe(true);
+        expect(observer.takeRecords()).toHaveLength(0);
+        observer.disconnect();
+    });
+
+    it('disables channel info while keeping playback controls available', () => {
+        const { player, store } = mount({ playerMode: 'fullscreen', viewerPaused: true });
+        store.dispatch({ type: Events.SETTINGS_LOADED, settings: { ...store.getState().settings, guide_channel_info: false } });
+        q(player, '.tvguide-player-stage').dispatchEvent(new MouseEvent('mousemove'));
+        expect(q(player, '.tvguide-channel-info').hidden).toBe(true);
+        expect(player.element.classList.contains('is-showing-controls')).toBe(true);
+    });
+
     it('starts hidden, reveals both on mouse movement or a video tap, and hides after inactivity', () => {
         const { player, store } = mount();
         const stage = q(player, '.tvguide-player-stage');
@@ -872,6 +1004,44 @@ describe('fullscreen controls and info visibility', () => {
         observer.observe(stage, { childList: true, subtree: true });
         player.renderControls({ ...store.getState(), tunedChannelId: 'studio:2' });
         expect(q(player, '.tvguide-channel-info').textContent).toContain('CH 02 · Two');
+        expect(observer.takeRecords()).toHaveLength(0);
+        observer.disconnect();
+    });
+
+    it('updates scene performers and studio artwork without replacing fullscreen descendants', () => {
+        const { player, store } = mount({ playerMode: 'fullscreen', viewerPaused: true });
+        const info = q(player, '.tvguide-channel-info');
+        const performers = q(player, '.tvguide-channel-info-performers');
+        const logo = q(player, '.tvguide-channel-info-studio');
+        const observer = new MutationObserver(() => {});
+        observer.observe(info, { childList: true, subtree: true });
+        const renderScene = (metadata) => player.renderControls({
+            ...store.getState(),
+            schedules: { 'studio:1': buildDaySchedule('studio:1', scenes().map((scene) => ({ ...scene, ...metadata })), DAY_KEY) }
+        });
+
+        renderScene({ performers: [{ name: ' Alice ' }, { name: '' }, { name: 'Bob' }], studio: { name: 'Studio A', image_path: '/studio/a.png' } });
+        expect(performers.hidden).toBe(false);
+        expect(performers.textContent).toBe('Alice, Bob');
+        expect(logo.hidden).toBe(false);
+        expect(logo.getAttribute('src')).toBe('/studio/a.png');
+        expect(logo.alt).toBe('Studio A');
+
+        logo.dispatchEvent(new Event('error'));
+        renderScene({ studio: { name: 'Studio A', image_path: '/studio/a.png' } });
+        expect(logo.hidden).toBe(true);
+        expect(performers.hidden).toBe(true);
+        expect(performers.textContent).toBe('');
+
+        renderScene({ studio: { name: 'Studio B', image_path: '/studio/b.png' } });
+        expect(logo.hidden).toBe(false);
+        expect(logo.alt).toBe('Studio B');
+
+        renderScene({ studio: { image_path: '/studio/default.png?default=true' } });
+        expect(logo.hidden).toBe(true);
+        expect(logo.hasAttribute('src')).toBe(false);
+        renderScene({});
+        expect(logo.hidden).toBe(true);
         expect(observer.takeRecords()).toHaveLength(0);
         observer.disconnect();
     });

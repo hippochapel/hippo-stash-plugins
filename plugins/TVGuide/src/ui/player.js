@@ -15,6 +15,7 @@ import { el, replaceChildren } from './dom.js';
 import { Events } from '../state/actions.js';
 import { formatClock, formatDuration, formatRemaining } from '../domain/format.js';
 import { sceneTitle } from '../api/scenes.js';
+import { isDefaultImage } from '../domain/logo.js';
 import * as sel from '../state/selectors.js';
 import { ICONS } from './icons.js';
 import { surfChannel } from './channelSurf.js';
@@ -31,6 +32,9 @@ export function createPlayer({ store, viewer }) {
     let fullscreenWanted = false;
     let renderedControls = null;
     const spinner = el('div', { class: 'tvguide-spinner', 'aria-hidden': 'true' });
+    const playbackError = el('div', { class: 'tvguide-playback-error', role: 'status', hidden: true });
+    const playbackErrorText = document.createTextNode('');
+    playbackError.appendChild(playbackErrorText);
 
     const playPause = controlButton('tvguide-play', () =>
         store.dispatch({
@@ -59,21 +63,70 @@ export function createPlayer({ store, viewer }) {
     );
 
     const channelInfo = el('div', { class: 'tvguide-channel-info', hidden: true });
+    let infoResize = null;
+    const infoResizer = el('button', {
+        class: 'tvguide-channel-info-resizer', type: 'button',
+        'aria-label': 'Resize channel info',
+        title: 'Drag to resize; arrow keys adjust size',
+        onclick: (event) => event.stopPropagation()
+    });
     const channelLabel = el('div', { class: 'tvguide-channel-info-name' });
     const programLabel = el('div', { class: 'tvguide-channel-info-program' });
+    const timeLabel = el('div', { class: 'tvguide-channel-info-time', hidden: true });
+    const minimize = el('button', {
+        class: 'tvguide-channel-info-toggle', type: 'button',
+        onclick: () => {
+            store.dispatch({ type: Events.TOGGLE_CHANNEL_INFO });
+            showControls();
+        }
+    });
+    const minimizeText = document.createTextNode('');
+    minimize.appendChild(minimizeText);
+    const performerLabel = el('div', { class: 'tvguide-channel-info-performers', hidden: true });
+    const studioLogo = el('img', { class: 'tvguide-channel-info-studio', hidden: true, alt: '' });
+    studioLogo.addEventListener('error', () => { studioLogo.hidden = true; });
     const descriptionLabel = el('div', { class: 'tvguide-channel-info-description', hidden: true });
-    channelInfo.append(channelLabel, programLabel, descriptionLabel);
+    const infoDetails = el('div', { class: 'tvguide-channel-info-details' },
+        programLabel, timeLabel, performerLabel, descriptionLabel);
+    channelInfo.append(
+        el('div', { class: 'tvguide-channel-info-heading' }, studioLogo, channelLabel, minimize),
+        infoDetails, infoResizer
+    );
     // Keep descendants connected when updating text inside native fullscreen.
     const channelText = document.createTextNode('');
     const programText = document.createTextNode('');
     const descriptionText = document.createTextNode('');
+    const performerText = document.createTextNode('');
+    const timeText = document.createTextNode('');
     channelLabel.appendChild(channelText);
     programLabel.appendChild(programText);
     descriptionLabel.appendChild(descriptionText);
+    performerLabel.appendChild(performerText);
+    timeLabel.appendChild(timeText);
+    // Keep the complete description so enlarging the overlay can reveal more.
+    // Only the line clamp changes; fullscreen descendants stay connected.
+    function fitDescription() {
+        if (channelInfo.hidden || infoDetails.hidden) return;
+        let lines = 3;
+        if (channelInfo.style.getPropertyValue('--tvguide-info-height')) {
+            const box = channelInfo.getBoundingClientRect();
+            const lastMetadata = !performerLabel.hidden ? performerLabel : !timeLabel.hidden ? timeLabel : programLabel;
+            const bottom = lastMetadata.getBoundingClientRect().bottom;
+            const style = getComputedStyle(descriptionLabel);
+            const lineHeight = parseFloat(style.lineHeight) || 25.2;
+            const margin = parseFloat(style.marginTop) || 8;
+            const padding = parseFloat(getComputedStyle(channelInfo).paddingBottom) || 16;
+            lines = Math.max(0, Math.floor((box.bottom - padding - bottom - margin) / lineHeight));
+        }
+        descriptionLabel.hidden = !descriptionText.data || lines === 0;
+        descriptionLabel.style.setProperty('--tvguide-description-lines', String(Math.max(1, lines)));
+    }
+    const infoSizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(fitDescription) : null;
+    [channelInfo, channelLabel, programLabel, timeLabel, performerLabel, studioLogo].forEach((node) => infoSizeObserver?.observe(node));
     const stage = el('div', {
         class: 'tvguide-player-stage', tabindex: '0',
         'aria-label': 'Player: left and right change channels; space plays or pauses'
-    }, viewer.element, spinner, controls, channelInfo);
+    }, viewer.element, spinner, controls, channelInfo, playbackError);
     const surfTransition = createSurfTransition(stage, viewer.element);
     const fullscreenDebug = createFullscreenDebug({ stage, video: viewer.element, getState: store.getState });
     // Available from DevTools only; diagnostics do nothing until start() is called.
@@ -92,7 +145,7 @@ export function createPlayer({ store, viewer }) {
     let wheelDistance = 0;
     let wheelUsed = false;
     let touch = null;
-    const canSurf = () => !destroyed && store.getState().open
+    const canSurf = () => !destroyed && !infoResize && store.getState().open
         && !store.getState().managerOpen && isFullscreenActive();
     const onWheel = (event) => {
         if (!canSurf() || event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
@@ -152,6 +205,54 @@ export function createPlayer({ store, viewer }) {
     const picture = el('div', { class: 'tvguide-player-picture' }, stage, resizer);
     const root = el('div', { class: 'tvguide-player' }, picture, progress, caption);
 
+    function sizeChannelInfo(width, height) {
+        channelInfo.classList.add('is-resized');
+        const box = channelInfo.getBoundingClientRect();
+        const bounds = stage.getBoundingClientRect();
+        const maxWidth = Math.max(0, bounds.right - box.left - 24);
+        const maxHeight = Math.max(0, box.bottom - bounds.top - 24);
+        channelInfo.style.setProperty('--tvguide-info-width', `${Math.min(maxWidth, Math.max(280, width))}px`);
+        channelInfo.style.setProperty('--tvguide-info-height', `${Math.min(maxHeight, Math.max(160, height))}px`);
+        fitDescription();
+    }
+    const moveInfoResize = (event) => {
+        if (!infoResize || event.pointerId !== infoResize.pointerId) return;
+        sizeChannelInfo(infoResize.width + event.clientX - infoResize.x,
+            infoResize.height + infoResize.y - event.clientY);
+    };
+    const endInfoResize = (event) => {
+        if (!infoResize || (event && event.pointerId !== infoResize.pointerId)) return;
+        infoResize = null;
+        window.removeEventListener('pointermove', moveInfoResize);
+        window.removeEventListener('pointerup', endInfoResize);
+        window.removeEventListener('pointercancel', endInfoResize);
+        window.removeEventListener('blur', cancelInfoResize);
+        if (!destroyed) scheduleHide();
+    };
+    const cancelInfoResize = () => endInfoResize();
+    infoResizer.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || infoResize) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const box = channelInfo.getBoundingClientRect();
+        infoResize = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, width: box.width, height: box.height };
+        showControls();
+        window.addEventListener('pointermove', moveInfoResize);
+        window.addEventListener('pointerup', endInfoResize);
+        window.addEventListener('pointercancel', endInfoResize);
+        window.addEventListener('blur', cancelInfoResize);
+    });
+    infoResizer.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const box = channelInfo.getBoundingClientRect();
+        const step = event.shiftKey ? 40 : 10;
+        sizeChannelInfo(box.width + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
+            box.height + (event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0));
+        showControls();
+    });
+
     resizer.addEventListener('pointerdown', (event) => {
         event.preventDefault();
         const startX = event.clientX;
@@ -194,6 +295,12 @@ export function createPlayer({ store, viewer }) {
         // The spinner is about the stream, not about being paused -- a paused
         // player is not loading.
         root.classList.toggle('is-loading', event.type === 'loading');
+        if (event.type === 'error') {
+            playbackErrorText.data = event.message;
+            playbackError.hidden = false;
+        } else if (event.type === 'loading' || event.type === 'playing') {
+            playbackError.hidden = true;
+        }
     });
 
     function controlButton(className, onclick, icons) {
@@ -416,6 +523,7 @@ export function createPlayer({ store, viewer }) {
     };
     const scheduleHide = (delay = 3000) => {
         clearTimeout(hideTimer);
+        if (infoResize) return;
         if (store.getState().playerMode === 'fullscreen' && store.getState().viewerPaused) return;
         hideTimer = setTimeout(hideNow, delay);
     };
@@ -435,6 +543,7 @@ export function createPlayer({ store, viewer }) {
         const entering = inFullscreen && !infoWasFullscreen;
         const changed = infoChannelId !== state.tunedChannelId;
         if (entering || !state.open || (!inFullscreen && infoWasFullscreen)) {
+            cancelInfoResize();
             clearTimeout(hideTimer);
             hideNow();
         }
@@ -480,8 +589,18 @@ export function createPlayer({ store, viewer }) {
     function renderChannelInfo(state) {
         const fullscreen = state.open && state.playerMode === 'fullscreen';
         const channel = sel.tunedChannel(state);
-        channelInfo.hidden = !fullscreen || !channel || !root.classList.contains('is-showing-controls');
+        channelInfo.hidden = state.settings.guide_channel_info === false
+            || !fullscreen || !channel || !root.classList.contains('is-showing-controls');
         if (!channelInfo.hidden && channel) {
+            const minimized = state.channelInfoMinimized;
+            channelInfo.classList.toggle('is-minimized', minimized);
+            infoDetails.hidden = minimized;
+            const toggleLabel = minimized ? 'Expand channel info' : 'Minimize channel info';
+            minimize.setAttribute('aria-label', toggleLabel);
+            minimize.title = toggleLabel;
+            minimize.setAttribute('aria-expanded', String(!minimized));
+            const symbol = minimized ? '+' : '−';
+            if (minimizeText.data !== symbol) minimizeText.data = symbol;
             // Raw lineup numbering survives searches, collapsed groups and pins.
             const number = state.allChannels.findIndex((item) => item.id === channel.id) + 1;
             const label = `CH ${String(number).padStart(2, '0')} · ${channel.name}`;
@@ -491,15 +610,27 @@ export function createPlayer({ store, viewer }) {
                 : sel.poolStatus(state, channel.id) === 'ready' ? 'No programming' : 'Loading…';
             if (channelText.data !== label) channelText.data = label;
             if (programText.data !== title) programText.data = title;
-            const details = (program?.scene?.details || '').replace(/\s+/g, ' ').trim();
-            let description = details;
-            if (details.length > 180) {
-                const excerpt = details.slice(0, 179);
-                const boundary = excerpt.lastIndexOf(' ');
-                description = `${(boundary > 0 ? excerpt.slice(0, boundary) : excerpt).trimEnd()}…`;
+            const times = program
+                ? `${formatClock(program.startMs, state.settings.guide_12_hour_clock)} – ${formatClock(program.endMs, state.settings.guide_12_hour_clock)} · ${formatRemaining(program.endMs - sel.playbackNowMs(state))}`
+                : '';
+            timeLabel.hidden = !times;
+            if (timeText.data !== times) timeText.data = times;
+            const performers = (program?.scene?.performers || [])
+                .map((performer) => performer?.name?.trim()).filter(Boolean).join(', ');
+            performerLabel.hidden = !performers;
+            if (performerText.data !== performers) performerText.data = performers;
+            const studio = program?.scene?.studio;
+            const logoUrl = isDefaultImage(studio?.image_path) ? null : studio.image_path;
+            if (studioLogo.getAttribute('src') !== logoUrl) {
+                studioLogo.hidden = !logoUrl;
+                if (logoUrl) studioLogo.setAttribute('src', logoUrl);
+                else studioLogo.removeAttribute('src');
             }
-            descriptionLabel.hidden = !description;
-            if (descriptionText.data !== description) descriptionText.data = description;
+            studioLogo.alt = logoUrl ? (studio.name || 'Studio') : '';
+            const details = (program?.scene?.details || '').replace(/\s+/g, ' ').trim();
+            descriptionLabel.hidden = !details;
+            if (descriptionText.data !== details) descriptionText.data = details;
+            fitDescription();
         }
     }
 
@@ -532,6 +663,8 @@ export function createPlayer({ store, viewer }) {
         },
 
         destroy() {
+            infoSizeObserver?.disconnect();
+            cancelInfoResize();
             fullscreenDebug.stop();
             destroyed = true;
             document.removeEventListener('fullscreenchange', onFullscreenChange);

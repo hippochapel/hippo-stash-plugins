@@ -58,6 +58,7 @@ export function createInitialState() {
 
         // Player
         playerMode: 'corner',
+        channelInfoMinimized: false,
         // The normal layout to return to when the browser leaves fullscreen.
         // This is session state, not a saved preference.
         fullscreenReturnMode: 'corner',

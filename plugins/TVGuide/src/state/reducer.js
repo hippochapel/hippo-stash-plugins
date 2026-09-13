@@ -560,6 +560,8 @@ export function reduce(state, event) {
                     pinOrder: event.pinOrder || state.pinOrder,
                     collapsedGroups: event.collapsedGroups || state.collapsedGroups,
                     playerWidthPx: event.playerWidthPx || state.playerWidthPx,
+                    channelInfoMinimized: typeof event.channelInfoMinimized === 'boolean'
+                        ? event.channelInfoMinimized : state.channelInfoMinimized,
                     playerMode: event.playerMode || state.playerMode
                     ,recentChannelIds: event.recentChannelIds || state.recentChannelIds
                 }),
@@ -608,6 +610,14 @@ export function reduce(state, event) {
         case Events.SET_TYPE_FILTER:
             if (event.typeFilter === state.typeFilter) return { state, effects };
             return { state: withVisibleChannels({ ...state, typeFilter: event.typeFilter }), effects };
+
+        case Events.TOGGLE_CHANNEL_INFO: {
+            const channelInfoMinimized = !state.channelInfoMinimized;
+            return {
+                state: { ...state, channelInfoMinimized },
+                effects: [Effects.persist(STORAGE_KEYS.channelInfoMinimized, String(channelInfoMinimized))]
+            };
+        }
 
         case Events.SET_PLAYER_WIDTH: {
             // Clamped so a stray drag cannot leave the player a sliver or push

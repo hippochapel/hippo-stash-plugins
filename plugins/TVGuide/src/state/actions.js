@@ -56,6 +56,7 @@ export const Events = {
 
     // Player
     SET_PLAYER_MODE: 'SET_PLAYER_MODE',
+    TOGGLE_CHANNEL_INFO: 'TOGGLE_CHANNEL_INFO',
     SET_VIEWER_PAUSED: 'SET_VIEWER_PAUSED',
     PIN_DETAILS: 'PIN_DETAILS',
     UNPIN_DETAILS: 'UNPIN_DETAILS',
@@ -92,6 +93,7 @@ export const Effects = {
 };
 
 export const STORAGE_KEYS = {
+    channelInfoMinimized: 'tvguide_channel_info_minimized',
     tunedChannel: 'tvguide_last_channel',
     muted: 'tvguide_muted',
     lineup: 'tvguide_lineup',

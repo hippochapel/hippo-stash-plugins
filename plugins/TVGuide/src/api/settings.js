@@ -20,7 +20,8 @@ export const DEFAULT_SETTINGS = {
     guide_short_scene_minutes: 15,
     guide_autoplay: true,
     guide_start_muted: true,
-    guide_navbar_button: true
+    guide_navbar_button: true,
+    guide_channel_info: true
 };
 
 /** Bounds keep a mistyped setting from producing an unusable guide. */

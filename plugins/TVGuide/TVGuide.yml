@@ -8,6 +8,10 @@ ui:
   css:
     - tvguide.css
 settings:
+  guide_channel_info:
+    displayName: Show Channel Info Overlay
+    description: "Show channel and scene information in fullscreen. Enabled by default. Disable to hide the overlay while keeping playback controls. Reload the page after changing this setting."
+    type: BOOLEAN
   guide_min_scenes:
     displayName: Minimum Scenes Per Channel
     description: "Sources with fewer scenes than this are not turned into channels. Default 5."

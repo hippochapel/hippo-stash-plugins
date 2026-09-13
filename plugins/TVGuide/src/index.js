@@ -8,6 +8,7 @@
 import './styles/index.css';
 
 import { createClient } from './api/client.js';
+import { fetchSceneStreams } from './api/scenes.js';
 import { loadPluginConfiguration, normalizeSettings } from './api/settings.js';
 import { createPluginStorage } from './api/pluginStorage.js';
 import { createPoolCache } from './api/cache.js';
@@ -84,7 +85,7 @@ export function start() {
     const gql = createClient();
     const cache = createPoolCache();
     const announcer = createAnnouncer();
-    const viewer = createViewer();
+    const viewer = createViewer({ getStreams: (id) => fetchSceneStreams(gql, id) });
     const touchGuard = createTouchGuard();
     let storage = null;
 
@@ -142,8 +143,14 @@ export function start() {
     // Coming back from another app leaves the element paused on iOS with no
     // event drift correction can act on -- it deliberately ignores a paused
     // element, so playback has to be re-established explicitly.
-    const onVisibility = () => {
-        if (document.visibilityState !== 'visible') return;
+    let wasHidden = document.visibilityState === 'hidden';
+    const onVisibility = (event) => {
+        if (document.visibilityState !== 'visible') {
+            wasHidden = true;
+            return;
+        }
+        if (!wasHidden && !event?.persisted) return;
+        wasHidden = false;
         store.dispatch({ type: Events.TICK, nowMs: Date.now() });
         store.dispatch({ type: Events.RESUME_AFTER_HIDDEN });
     };
@@ -176,6 +183,7 @@ export function start() {
             lineup: readLineup(storage, settings),
             collapsedGroups: parseJsonArray(readStored(storage, STORAGE_KEYS.collapsed)),
             playerWidthPx: Number(readStored(storage, STORAGE_KEYS.playerWidth)) || undefined,
+            channelInfoMinimized: readStored(storage, STORAGE_KEYS.channelInfoMinimized) === 'true',
             playerMode: readPlayerMode(storage)
             ,recentChannelIds: parseJsonArray(readStored(storage, STORAGE_KEYS.recentChannels))
         });

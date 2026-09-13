@@ -1155,7 +1155,12 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
 
 .tvguide-channel-info {
     position: absolute;
-    top: max(24px, env(safe-area-inset-top));
+    width: var(--tvguide-info-width, auto);
+    height: var(--tvguide-info-height, auto);
+    max-height: calc(100% - max(56px, env(safe-area-inset-bottom)) - 24px);
+    overflow: hidden;
+    /* Leave room for the playback controls along the bottom edge. */
+    bottom: max(56px, env(safe-area-inset-bottom));
     left: max(24px, env(safe-area-inset-left));
     z-index: 5;
     max-width: calc(100% - 48px);
@@ -1170,6 +1175,93 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
 }
 
 .tvguide-channel-info[hidden] { display: none; }
+.tvguide-playback-error {
+    position: absolute;
+    inset: 16px 16px auto;
+    z-index: 6;
+    padding: 12px;
+    border-radius: 6px;
+    background: rgba(8, 14, 24, .9);
+    color: #fff;
+    pointer-events: none;
+}
+.tvguide-playback-error[hidden] { display: none; }
+.tvguide-channel-info-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 18px;
+    height: 18px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: nesw-resize;
+    touch-action: none;
+    pointer-events: auto;
+}
+.tvguide-channel-info-resizer::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    border-top: 2px solid #9cabc0;
+    border-right: 2px solid #9cabc0;
+    border-top-right-radius: 3px;
+}
+.tvguide-channel-info-resizer:hover::after { border-color: #fff; }
+.tvguide-channel-info-resizer:focus-visible { outline: 2px solid #68b5ff; outline-offset: -2px; }
+.tvguide-channel-info.is-minimized { width: auto; height: auto; }
+.tvguide-channel-info.is-minimized .tvguide-channel-info-resizer { display: none; }
+.tvguide-channel-info-heading { display: flex; align-items: center; gap: 14px; padding-right: 28px; }
+.tvguide-channel-info-toggle {
+    position: absolute;
+    top: 22px;
+    right: 12px;
+    pointer-events: auto;
+    flex-shrink: 0;
+    margin-left: auto;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0 4px;
+    color: #fff;
+    background: rgba(255, 255, 255, .12);
+    border: 1px solid rgba(255, 255, 255, .3);
+    border-radius: 4px;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+.tvguide-channel-info-toggle:focus-visible { outline: 2px solid #68b5ff; outline-offset: 2px; }
+.tvguide-channel-info-details[hidden],
+.tvguide-channel-info-time[hidden],
+.tvguide-channel-info.is-minimized .tvguide-channel-info-studio { display: none; }
+.tvguide-channel-info.is-minimized { padding: 8px 12px; }
+.tvguide-channel-info.is-minimized .tvguide-channel-info-toggle { top: 8px; }
+.tvguide-channel-info.is-minimized .tvguide-channel-info-name { font-size: clamp(16px, 2vw, 22px); }
+.tvguide-channel-info-time { margin-top: 6px; color: #d5dce5; font-size: clamp(13px, 1.5vw, 18px); }
+.tvguide-channel-info-studio {
+    width: clamp(48px, 8vw, 88px);
+    height: clamp(36px, 6vw, 60px);
+    object-fit: contain;
+    flex-shrink: 0;
+}
+.tvguide-channel-info-studio[hidden] { display: none; }
+.tvguide-channel-info-performers {
+    max-width: 60ch;
+    margin-top: 6px;
+    font-size: clamp(13px, 1.5vw, 18px);
+    line-height: 1.4;
+    color: #d5dce5;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+.tvguide-channel-info-performers[hidden] { display: none; }
 .tvguide-surf-frame {
     position: absolute;
     z-index: 1;
@@ -1191,10 +1283,11 @@ a.tvguide-manager-row-name:hover { color: var(--tvguide-accent); }
     color: #d5dce5;
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: var(--tvguide-description-lines, 3);
     overflow: hidden;
 }
 .tvguide-channel-info-description[hidden] { display: none; }
+.tvguide-channel-info.is-resized .tvguide-channel-info-description { max-width: none; }
 
 /* Gallery Mode's fallback for Safari builds that reject element fullscreen.
    A fixed stage preserves TV Guide's controls while still filling the viewport. */

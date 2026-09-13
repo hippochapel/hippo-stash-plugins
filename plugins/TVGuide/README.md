@@ -126,11 +126,22 @@ and respects search, filters, hidden channels and collapsed groups. In fullscree
 scroll down or swipe up for the next channel (reverse for the previous channel).
 Each wheel gesture or swipe changes one channel with a short vertical slide
 transition (disabled for reduced motion). The next stream may still need to buffer.
+If the browser rejects a scene's stream, the guide requests compatible alternate
+streams from Stash and tries them at the current programme offset. If none plays,
+the player shows an error instead of silently remaining blank.
 In fullscreen, controls and channel info appear on video taps, mouse movement or
 channel changes, and hide together after three seconds of inactivity. They stay
 visible while paused; entering fullscreen during playback leaves them hidden. The overlay
-shows the channel number, name, current programme and a description excerpt of
-up to 180 characters (at most three lines). Numbers start at 1 in the
+shows the channel number, name, studio logo, current programme, start and end
+times, minutes remaining, performer names (up to two lines), and a description
+excerpt (three lines by default, adjusting to the available space when resized). Times follow the clock
+setting, and minutes remaining freeze while paused. Use the minus button to
+minimize the overlay to the channel name and the plus button to expand it;
+this preference is saved across sessions. Drag the expanded overlay's top-right
+corner to resize it, or focus the handle and use the arrow keys (Shift for larger
+steps). Its bottom-left corner stays anchored above the controls. To hide it entirely, disable **Show
+Channel Info Overlay** in Stash's TV Guide plugin settings and reload the page.
+Playback controls remain available. Numbers start at 1 in the
 full lineup and do not change when filtering, collapsing groups or pinning.
 
 Clicking a programme that is not on now **previews** it as a still and pauses
