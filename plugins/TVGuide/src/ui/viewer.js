@@ -229,6 +229,15 @@ export function createViewer({ now = () => Date.now(), document: doc = document,
     return {
         element: video,
 
+        prepare() {
+            this.stop();
+            emit({ type: 'loading' });
+        },
+
+        reportError(message) {
+            emit({ type: 'error', message });
+        },
+
         /** Subscribe to loading/playing/paused. Returns an unsubscribe. */
         subscribe(listener) {
             listeners.add(listener);

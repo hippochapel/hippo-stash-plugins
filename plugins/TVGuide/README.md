@@ -45,7 +45,7 @@ together would lose it.
 ### The lineup
 
 A list of source entries — studios, **models** (performers), tags, groups and
-saved filters mix freely in one guide. The Special section contains four
+saved filters mix freely in one guide. The Special section contains five
 individual channels, which are explicit picks just like any other channel:
 
 ```json
@@ -65,6 +65,18 @@ release date, **Recently added** uses when it was added to your library,
 be added, removed, pinned, hidden, renamed, and customised exactly like other
 channels. Fresh installations add all four automatically; existing saved
 lineups are left unchanged.
+
+**All Scenes** is an optional fifth channel: add it in **Channels → Special**.
+It loads a lightweight index of scene IDs, titles, and durations in pages, ignoring global and per-channel scene caps,
+and plays every scene with a usable duration once per continuous shuffled cycle.
+The cycle continues across midnight and repeats only after all scenes have aired;
+it does not track which scenes you personally watched. Its order and timeline are
+stable across reloads while the library is unchanged. Changing the library can
+change the cycle when its index is refreshed. Only the index is needed up front
+and cached for the browser session. Descriptions, artwork, performers, and stream
+URLs load on demand for the visible guide time window, the current and next scene,
+and the selected scene. Moving the time window loads its new scenes, with at most
+two detail requests in flight.
 
 An entry with `minScenes` is a **rule**: while it is on, a newly-added studio
 becomes a channel on its own. An entry with `ids` is an **explicit pick**.

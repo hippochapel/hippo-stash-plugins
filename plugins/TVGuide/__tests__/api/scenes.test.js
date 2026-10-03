@@ -1,4 +1,30 @@
-import { fetchScenePool, fetchSceneStreams, sceneTitle, SCENE_POOL_QUERY } from '../../src/api/scenes.js';
+import { fetchScenePool, fetchAllScenePool, fetchSceneStreams, sceneTitle, SCENE_POOL_QUERY } from '../../src/api/scenes.js';
+
+describe('the full library pool', () => {
+    it('loads beyond the normal cap, deduplicates pages, and includes the final partial page', async () => {
+        const first = Array.from({ length: 500 }, (_, i) => ({ id: String(i) }));
+        const gql = jest.fn()
+            .mockResolvedValueOnce({ findScenes: { scenes: first } })
+            .mockResolvedValueOnce({ findScenes: { scenes: [first[499], { id: '500' }] } });
+        const result = await fetchAllScenePool(gql);
+        expect(result).toHaveLength(501);
+        expect(result.at(-1).id).toBe('500');
+        expect(result[0]._summary).toBe(true);
+        expect(gql.mock.calls[0][0]).not.toMatch(/details|paths|performers|studio|tags/);
+        expect(gql.mock.calls.map((call) => call[1])).toEqual([1, 2].map((page) => ({
+            filter: {}, find: { per_page: 500, page, sort: 'id', direction: 'ASC' }
+        })));
+    });
+
+    it('rejects incomplete results rather than scheduling a partial library', async () => {
+        const gql = jest.fn()
+            .mockResolvedValueOnce({ findScenes: { scenes: Array.from({ length: 500 }, (_, i) => ({ id: String(i) })) } })
+            .mockRejectedValueOnce(new Error('offline'));
+        await expect(fetchAllScenePool(gql)).rejects.toThrow('offline');
+        await expect(fetchAllScenePool(async () => ({}))).rejects.toThrow('full scene library');
+        expect(await fetchAllScenePool(async () => ({ findScenes: { scenes: [] } }))).toEqual([]);
+    });
+});
 
 it('fetches alternate stream URLs for only the failed scene', async () => {
     const streams = [{ url: '/scene/1202/stream.mp4', mime_type: 'video/mp4' }];

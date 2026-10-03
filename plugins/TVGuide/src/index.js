@@ -21,6 +21,7 @@ import {
     DEFAULT_SORT
 } from './domain/channelPrefs.js';
 import { createStore } from './state/store.js';
+import { createLazySceneDetails } from './state/lazySceneDetails.js';
 import { createEffectRunner } from './state/effects.js';
 import { createAnnouncer } from './ui/a11y.js';
 import { createViewer } from './ui/viewer.js';
@@ -117,6 +118,7 @@ export function start() {
 
     overlayRef = overlay;
     store.subscribe((state) => overlay.render(state));
+    const stopLazySceneDetails = createLazySceneDetails({ store, gql });
 
     const navbar = createNavbarButton({ onActivate: () => overlay.open() });
 
@@ -199,6 +201,7 @@ export function start() {
     });
 
     return function stop() {
+        stopLazySceneDetails();
         clearInterval(ticker);
         stopLayoutWatch();
         document.removeEventListener('keydown', onKeydown, true);

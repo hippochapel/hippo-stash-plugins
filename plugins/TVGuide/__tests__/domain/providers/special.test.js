@@ -46,12 +46,18 @@ describe('special provider', () => {
             guide_short_max_minutes: 5
         }, new Date('2026-08-25T12:00:00Z'));
 
-        expect(total).toBe(4);
+        expect(total).toBe(5);
         expect(channels.map((channel) => channel.id)).toEqual([
+            'special:all-scenes',
             'special:new-releases',
             'special:recently-added',
             'special:movies',
             'special:shorts'
         ]);
+    });
+
+    it('offers an unfiltered All Scenes channel as an explicit pick', async () => {
+        const channels = await special.listChannels({ ids: ['all-scenes'] });
+        expect(channels).toEqual([expect.objectContaining({ id: 'special:all-scenes', name: 'All Scenes', sceneFilter: {} })]);
     });
 });

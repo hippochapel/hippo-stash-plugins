@@ -12,6 +12,22 @@ import {
 const HOUR = 3600000;
 const MIN = 60000;
 
+describe('All Scenes continuous scheduling', () => {
+    it('plays each unique scene once across multiple days before repeating', () => {
+        const pool = scenes(1500, 1600, 1700);
+        const schedule = buildDaySchedule('special:all-scenes', [...pool, pool[0]], '2026-09-13');
+        const nextDay = buildDaySchedule('special:all-scenes', pool, '2026-09-14');
+        expect(nextDay).toEqual(schedule);
+        const programs = scheduleBetween(schedule, 0, schedule.epochMs, schedule.epochMs + schedule.totalMs);
+        expect(programs).toHaveLength(3);
+        expect(new Set(programs.map((p) => p.scene.id)).size).toBe(3);
+        expect(programAt(schedule, schedule.epochMs + schedule.totalMs, 0).scene.id).toBe(programs[0].scene.id);
+        const midnight = schedule.epochMs + 24 * HOUR;
+        expect(programAt(nextDay, midnight, midnight)).toEqual(programAt(schedule, midnight, schedule.epochMs));
+        expect(programAt(schedule, midnight - 1, 0).scene.id).toBe(programAt(nextDay, midnight, midnight).scene.id);
+    });
+});
+
 /** Scenes with tidy round durations so offsets are readable in assertions. */
 function scenes(...durationsMinutes) {
     return durationsMinutes.map((m, i) => ({

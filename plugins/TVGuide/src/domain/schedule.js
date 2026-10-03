@@ -15,6 +15,8 @@
  */
 
 /** Guard against a pathological window (very short scenes, very wide view). */
+import { ALL_SCENES_CHANNEL_ID, ALL_SCENES_EPOCH_MS } from './allScenes.js';
+
 export const MAX_SCHEDULE_WALK = 500;
 
 /** FNV-1a. Small, fast, and stable across engines -- which matters, because
@@ -83,10 +85,12 @@ function durationMsOf(scene) {
  * @returns {{entries: Array<{scene: object, offsetMs: number, durationMs: number}>, totalMs: number}}
  */
 export function buildDaySchedule(channelId, scenes, dayKey) {
-    const pool = (scenes || []).filter((s) => durationMsOf(s) > 0);
+    const continuous = channelId === ALL_SCENES_CHANNEL_ID;
+    const source = continuous ? [...new Map((scenes || []).map((scene) => [scene.id, scene])).values()] : scenes;
+    const pool = (source || []).filter((s) => durationMsOf(s) > 0);
     if (pool.length === 0) return { entries: [], totalMs: 0 };
 
-    const ordered = seededShuffle(pool, hashString(`${channelId}|${dayKey}`));
+    const ordered = seededShuffle(pool, hashString(`${channelId}|${continuous ? 'continuous-v1' : dayKey}`));
 
     const entries = [];
     let offsetMs = 0;
@@ -95,7 +99,7 @@ export function buildDaySchedule(channelId, scenes, dayKey) {
         entries.push({ scene, offsetMs, durationMs });
         offsetMs += durationMs;
     }
-    return { entries, totalMs: offsetMs };
+    return { entries, totalMs: offsetMs, ...(continuous ? { epochMs: ALL_SCENES_EPOCH_MS } : {}) };
 }
 
 /** Positive modulo -- `%` alone would go negative for times before day start. */
@@ -127,6 +131,7 @@ function indexAtCursor(entries, cursor) {
 export function programAt(daySchedule, nowMs, dayStartMs) {
     const { entries, totalMs } = daySchedule;
     if (totalMs <= 0) return null;
+    dayStartMs = daySchedule.epochMs ?? dayStartMs;
 
     const sinceDayStart = nowMs - dayStartMs;
     const cursor = mod(sinceDayStart, totalMs);

@@ -37,6 +37,41 @@ export async function fetchScenePool(gql, sceneFilter, poolCap) {
     return data?.findScenes?.scenes || [];
 }
 
+const SCENE_INDEX_QUERY = `query TVGuideSceneIndex($filter: SceneFilterType, $find: FindFilterType) {
+    findScenes(scene_filter: $filter, filter: $find) {
+        scenes { id title files { duration } }
+    }
+}`;
+
+/** Fetch only the timing index, not full metadata for the entire library. */
+export async function fetchAllScenePool(gql) {
+    const scenes = new Map();
+    const perPage = 500;
+    for (let page = 1; ; page += 1) {
+        const data = await gql(SCENE_INDEX_QUERY, {
+            filter: {}, find: { per_page: perPage, page, sort: 'id', direction: 'ASC' }
+        });
+        const batch = data?.findScenes?.scenes;
+        if (!Array.isArray(batch)) throw new Error('Unable to load the full scene library');
+        for (const scene of batch) scenes.set(scene.id, { ...scene, _summary: true });
+        if (batch.length < perPage) return [...scenes.values()];
+    }
+}
+
+export async function fetchSceneDetails(gql, id) {
+    const data = await gql(`query TVGuideSceneDetails($id: ID!) {
+        findScene(id: $id) {
+            id title details date files { duration }
+            paths { screenshot stream }
+            studio { name image_path }
+            performers { id name image_path }
+            tags { id name image_path }
+        }
+    }`, { id });
+    if (!data?.findScene) throw new Error('Scene details are unavailable');
+    return { ...data.findScene, _summary: false };
+}
+
 /** Resolve alternate streams only when direct playback fails. */
 export async function fetchSceneStreams(gql, id) {
     const data = await gql(`query TVGuideSceneStreams($id: ID!) {

@@ -7,7 +7,8 @@
 
 import { Events } from './actions.js';
 import { resolveLineup, fetchCatalog, fetchCatalogPage } from '../domain/providers/index.js';
-import { fetchScenePool } from '../api/scenes.js';
+import { fetchScenePool, fetchAllScenePool } from '../api/scenes.js';
+import { ALL_SCENES_CHANNEL_ID } from '../domain/allScenes.js';
 
 /** Concurrent pool fetches. Enough to fill a screen, few enough not to
  *  stampede the server when someone scrolls fast through a long lineup. */
@@ -65,17 +66,19 @@ export function createEffectRunner({
             case 'fetchPool': {
                 const { dayKey, settings } = getState();
                 const poolCap = effect.poolCap || settings.guide_pool_cap;
+                const allScenes = effect.channelId === ALL_SCENES_CHANNEL_ID;
+                const cacheKey = allScenes ? 'all-scenes-index-v2' : dayKey;
 
-                const cached = cache && cache.get(effect.channelId, dayKey);
+                const cached = cache && cache.get(effect.channelId, cacheKey);
                 if (cached) {
                     dispatch({ type: Events.POOL_LOADED, channelId: effect.channelId, scenes: cached });
                     return;
                 }
 
                 schedule(() =>
-                    fetchScenePool(gql, effect.sceneFilter, poolCap).then(
+                    (allScenes ? fetchAllScenePool(gql) : fetchScenePool(gql, effect.sceneFilter, poolCap)).then(
                         (scenes) => {
-                            if (cache) cache.set(effect.channelId, dayKey, scenes);
+                            if (cache) cache.set(effect.channelId, cacheKey, scenes);
                             dispatch({ type: Events.POOL_LOADED, channelId: effect.channelId, scenes });
                         },
                         (error) =>
@@ -139,6 +142,14 @@ export function createEffectRunner({
 
             case 'tuneViewer':
                 if (viewer) viewer.tune(effect.scene, effect.offsetMs, getState().muted);
+                return;
+
+            case 'prepareViewer':
+                if (viewer) viewer.prepare?.();
+                return;
+
+            case 'playbackError':
+                if (viewer) viewer.reportError?.(effect.message);
                 return;
 
             case 'stopViewer':

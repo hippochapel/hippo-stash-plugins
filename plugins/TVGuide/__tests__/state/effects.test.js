@@ -33,6 +33,15 @@ function harness(overrides = {}) {
 }
 
 describe('loadChannels', () => {
+    it('loads All Scenes independently of the normal pool cap and daily cache key', async () => {
+        const { run, dispatch, getState, ctx } = harness();
+        run({ type: 'fetchPool', channelId: 'special:all-scenes', sceneFilter: {}, poolCap: 1 }, getState, dispatch);
+        await flush();
+        expect(ctx.gql.mock.calls[0][1].find.per_page).toBe(500);
+        expect(ctx.cache.get).toHaveBeenCalledWith('special:all-scenes', 'all-scenes-index-v2');
+        expect(ctx.cache.set).toHaveBeenCalledWith('special:all-scenes', 'all-scenes-index-v2', expect.any(Array));
+        expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: Events.POOL_LOADED, channelId: 'special:all-scenes' }));
+    });
     it('resolves the lineup and reports the channels', async () => {
         const { run, dispatch, getState } = harness();
         run({ type: 'loadChannels' }, getState, dispatch);

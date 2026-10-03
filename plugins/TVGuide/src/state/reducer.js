@@ -8,6 +8,7 @@
  */
 
 import { Events, Effects, STORAGE_KEYS } from './actions.js';
+import { ALL_SCENES_CHANNEL_ID } from '../domain/allScenes.js';
 import { createInitialState, PoolStatus } from './initialState.js';
 import { buildDaySchedule, dayBucket, programAt } from '../domain/schedule.js';
 import { snapToStep, clampWindowStart, HALF_HOUR_MS } from '../domain/layout.js';
@@ -147,6 +148,7 @@ function tuneEffects(state, channelId, nowMs) {
     if (state.viewerPaused) return [];
     const program = liveProgram(state, channelId, nowMs);
     if (!program) return [];
+    if (program.scene._summary) return [{ type: 'prepareViewer' }];
     return [Effects.tuneViewer(channelId, program.scene, program.elapsedMs)];
 }
 
@@ -219,7 +221,8 @@ export function reduce(state, event) {
             // broadcast day rather than drifting.
             if (key !== state.dayKey) {
                 const specialChannelIds = new Set(
-                    state.allChannels.filter((channel) => channel.source === 'special').map((channel) => channel.id)
+                    state.allChannels.filter((channel) => channel.source === 'special'
+                        && channel.id !== ALL_SCENES_CHANNEL_ID).map((channel) => channel.id)
                 );
                 const schedules = {};
                 for (const [channelId, pool] of Object.entries(state.pools)) {
@@ -255,7 +258,7 @@ export function reduce(state, event) {
             // rather than running past the end of its scene.
             const before = liveProgram(state, state.tunedChannelId, state.nowMs);
             const after = liveProgram(next, next.tunedChannelId, event.nowMs);
-            if (after && (!before || before.scene.id !== after.scene.id)) {
+            if (after && (!before || before.scene.id !== after.scene.id || before.startMs !== after.startMs)) {
                 effects.push(...tuneEffects(next, next.tunedChannelId, event.nowMs));
             }
 
@@ -354,6 +357,37 @@ export function reduce(state, event) {
                 effects.push(...tuneEffects(next, event.channelId, state.nowMs));
             }
             return { state: next, effects };
+        }
+
+        case Events.SCENE_DETAILS_LOADED: {
+            const channelId = ALL_SCENES_CHANNEL_ID;
+            const pool = state.pools[channelId];
+            const schedule = state.schedules[channelId];
+            if (!pool || !schedule) return { state, effects };
+            const before = liveProgram(state, channelId, state.nowMs);
+            const merge = (scene) => scene.id === event.scene.id
+                ? { ...scene, ...event.scene, files: scene.files, _summary: false } : scene;
+            const next = {
+                ...state,
+                pools: { ...state.pools, [channelId]: { ...pool, scenes: pool.scenes.map(merge) } },
+                schedules: { ...state.schedules, [channelId]: {
+                    ...schedule, entries: schedule.entries.map((entry) => entry.scene.id === event.scene.id
+                        ? { ...entry, scene: merge(entry.scene) } : entry)
+                } }
+            };
+            // Hydrating the next scene or a hovered scene must not retune video.
+            if (state.open && state.tunedChannelId === channelId && before?.scene._summary && before.scene.id === event.scene.id) {
+                effects.push(...tuneEffects(next, channelId, state.nowMs));
+            }
+            return { state: next, effects };
+        }
+
+        case Events.SCENE_DETAILS_FAILED: {
+            const current = liveProgram(state, ALL_SCENES_CHANNEL_ID, state.nowMs);
+            if (state.open && !state.viewerPaused && state.tunedChannelId === ALL_SCENES_CHANNEL_ID && current?.scene.id === event.sceneId) {
+                effects.push({ type: 'playbackError', message: 'Unable to load scene details. Retrying shortly.' });
+            }
+            return { state, effects };
         }
 
         case Events.POOL_FAILED:

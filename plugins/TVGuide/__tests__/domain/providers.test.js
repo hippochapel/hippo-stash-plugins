@@ -352,6 +352,7 @@ describe('fetchCatalog', () => {
         expect(catalog.studio[0].id).toBe('studio:1');
         expect(catalog.savedFilter[0].id).toBe('savedFilter:1');
         expect(catalog.special.map((channel) => channel.id)).toEqual([
+            'special:all-scenes',
             'special:new-releases', 'special:recently-added', 'special:movies', 'special:shorts'
         ]);
     });

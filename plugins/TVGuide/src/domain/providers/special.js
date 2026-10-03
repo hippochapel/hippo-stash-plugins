@@ -3,6 +3,11 @@ import { resolveLogo } from '../logo.js';
 
 const SPECIALS = [
     {
+        id: 'all-scenes',
+        name: 'All Scenes',
+        filter: () => ({})
+    },
+    {
         id: 'new-releases',
         name: 'New releases',
         filter: (settings, now) => ({

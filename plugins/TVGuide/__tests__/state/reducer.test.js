@@ -258,6 +258,19 @@ describe('TICK', () => {
         expect(Object.keys(next.schedules)).toEqual(['studio:1']);
     });
 
+    it('keeps the full-library channel pool and continuous schedule at midnight', () => {
+        const channelId = 'special:all-scenes';
+        const state = readyState();
+        const pool = { status: PoolStatus.READY, scenes: scenes(3, 1500), error: null };
+        state.allChannels = [{ id: channelId, name: 'All Scenes', source: 'special' }];
+        state.pools = { [channelId]: pool };
+        state.schedules = { [channelId]: buildDaySchedule(channelId, pool.scenes, state.dayKey) };
+        const result = run(state, { type: Events.TICK, nowMs: DAY_START + 24 * HOUR });
+        expect(result.state.pools[channelId]).toBe(pool);
+        expect(result.state.schedules[channelId]).toEqual(state.schedules[channelId]);
+        expect(result.effects).not.toContainEqual({ type: 'loadChannels' });
+    });
+
     it('refreshes special channels and drops their old pools at the day boundary', () => {
         const state = readyState({
             allChannels: [{ ...channel('special:new-releases'), source: 'special' }, channel('studio:1')],
