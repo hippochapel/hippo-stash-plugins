@@ -1,101 +1,88 @@
-import { createNavbarButton, BUTTON_ID, MOUNT_SELECTORS } from '../../src/ui/navbarButton.js';
+import { createNavbarButton, BUTTON_ID } from '../../src/ui/navbarButton.js';
+
+const navbar = () => `<nav class="navbar top-nav">
+    <div class="navbar-collapse collapse"><div class="navbar-nav menu-items"></div><div class="navbar-nav utilities"></div></div>
+    <div class="navbar-buttons"><button class="navbar-toggler" aria-expanded="true"></button></div>
+</nav>`;
 
 describe('createNavbarButton', () => {
     let button;
+    beforeEach(() => { document.body.innerHTML = navbar(); });
+    afterEach(() => { button?.stop(); button = null; });
 
-    beforeEach(() => {
-        document.body.innerHTML = '';
-    });
-
-    afterEach(() => {
-        if (button) button.stop();
-        button = null;
-    });
-
-    it('is a labelled button', () => {
+    it('uses a labelled SVG button inside the collapsible menu, not the utility buttons', () => {
         button = createNavbarButton({ onActivate: jest.fn() });
+        button.place();
         expect(button.element.getAttribute('aria-label')).toBe('Open TV Guide');
-        expect(button.element.type).toBe('button');
+        expect(button.element.textContent).toBe('Guide');
+        expect(button.element.querySelector('svg')).not.toBeNull();
+        expect(document.querySelector('.menu-items').contains(button.element)).toBe(true);
+        expect(document.querySelector('.navbar-buttons').contains(button.element)).toBe(false);
+        expect(button.element.parentElement.classList.contains('nav-link')).toBe(true);
     });
 
-    it('opens the guide when clicked', () => {
+    it('closes the hamburger menu through the native toggle before opening the guide', () => {
+        const actions = [];
+        document.querySelector('.navbar-toggler').addEventListener('click', () => actions.push('collapse'));
+        button = createNavbarButton({ onActivate: () => actions.push('open') });
+        button.place();
+        button.element.click();
+        expect(actions).toEqual(['collapse', 'open']);
+    });
+
+    it('does not toggle an already collapsed menu', () => {
+        const toggle = document.querySelector('.navbar-toggler');
+        toggle.setAttribute('aria-expanded', 'false');
+        const clicked = jest.fn();
+        toggle.addEventListener('click', clicked);
+        button = createNavbarButton({ onActivate: jest.fn() });
+        button.place();
+        button.element.click();
+        expect(clicked).not.toHaveBeenCalled();
+    });
+
+    it('opens without navigating and supports Space activation on the menu link', () => {
         const onActivate = jest.fn();
         button = createNavbarButton({ onActivate });
-        button.element.click();
-        expect(onActivate).toHaveBeenCalled();
-    });
-
-    it.each(MOUNT_SELECTORS)('mounts into %s', (selector) => {
-        const host = document.createElement('div');
-        // Build an element matching the selector, however it is written.
-        if (selector.startsWith('.')) host.className = selector.slice(1);
-        else if (selector.startsWith('#')) host.id = selector.slice(1);
-        document.body.appendChild(host);
-        // Compound selectors need a real ancestor chain.
-        document.body.innerHTML = `<nav class="navbar" id="stash-navbar">
-            <div class="navbar-buttons"></div>
-            <div class="nav-utility"></div>
-            <div class="navbar-nav"></div>
-        </nav>`;
-
-        button = createNavbarButton({ onActivate: jest.fn() });
         button.place();
+        const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+        button.element.dispatchEvent(click);
+        expect(click.defaultPrevented).toBe(true);
+        expect(onActivate).toHaveBeenCalledTimes(1);
 
-        expect(document.getElementById(BUTTON_ID)).not.toBeNull();
+        const space = new KeyboardEvent('keydown', { key: ' ', cancelable: true });
+        button.element.dispatchEvent(space);
+        expect(space.defaultPrevented).toBe(true);
+        expect(onActivate).toHaveBeenCalledTimes(2);
+        button.element.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', repeat: true }));
+        expect(onActivate).toHaveBeenCalledTimes(2);
     });
 
-    it('prefers the earliest selector in the fallback chain', () => {
-        document.body.innerHTML = `<nav class="navbar">
-            <div class="nav-utility"></div>
-            <div class="navbar-buttons"></div>
-        </nav>`;
-
-        button = createNavbarButton({ onActivate: jest.fn() });
-        button.place();
-
-        expect(document.querySelector('.navbar-buttons').contains(button.element)).toBe(true);
-    });
-
-    it('does nothing when no mount point exists', () => {
+    it('waits for a menu instead of mounting inside a utility link', () => {
+        document.body.innerHTML = '<nav><a class="nav-utility"></a><div class="navbar-buttons"></div></nav>';
         button = createNavbarButton({ onActivate: jest.fn() });
         button.place();
         expect(document.getElementById(BUTTON_ID)).toBeNull();
     });
 
-    it('does not mount twice', () => {
-        document.body.innerHTML = '<div class="navbar-buttons"></div>';
+    it('does not mount twice and recovers when the SPA replaces the navbar', async () => {
         button = createNavbarButton({ onActivate: jest.fn() });
+        button.start();
         button.place();
-        button.place();
+        expect(document.querySelectorAll(`#${BUTTON_ID}`)).toHaveLength(1);
+        document.body.innerHTML = navbar();
+        await Promise.resolve();
+        expect(document.querySelector('.menu-items').contains(button.element)).toBe(true);
         expect(document.querySelectorAll(`#${BUTTON_ID}`)).toHaveLength(1);
     });
 
-    it('replaces itself after the SPA re-renders the navbar away', async () => {
-        document.body.innerHTML = '<div class="navbar-buttons"></div>';
+    it('removes the entire menu item and stops observing', async () => {
         button = createNavbarButton({ onActivate: jest.fn() });
         button.start();
-        expect(document.getElementById(BUTTON_ID)).not.toBeNull();
-
-        // Stash re-renders its navbar, discarding our button.
-        document.body.innerHTML = '<div class="navbar-buttons"></div>';
-        expect(document.getElementById(BUTTON_ID)).toBeNull();
-
-        await new Promise((resolve) => setTimeout(resolve, 0));
-
-        expect(document.getElementById(BUTTON_ID)).not.toBeNull();
-    });
-
-    it('removes itself and stops observing on stop', async () => {
-        document.body.innerHTML = '<div class="navbar-buttons"></div>';
-        const b = createNavbarButton({ onActivate: jest.fn() });
-        b.start();
-        b.stop();
-
-        expect(document.getElementById(BUTTON_ID)).toBeNull();
-
-        document.body.innerHTML = '<div class="navbar-buttons"></div>';
-        await new Promise((resolve) => setTimeout(resolve, 0));
-
+        button.stop();
+        expect(document.querySelector('.tvguide-navbar-item')).toBeNull();
+        document.body.innerHTML = navbar();
+        await Promise.resolve();
         expect(document.getElementById(BUTTON_ID)).toBeNull();
     });
 });

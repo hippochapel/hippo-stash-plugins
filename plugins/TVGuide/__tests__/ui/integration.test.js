@@ -158,7 +158,7 @@ describe('grid rendering', () => {
         const labels = Array.from(grid.element.querySelectorAll('.tvguide-tick')).map(
             (t) => t.textContent
         );
-        expect(labels).toEqual(['12:00', '12:30', '13:00', '13:30', '14:00', '14:30']);
+        expect(labels).toEqual(['12:00 PM', '12:30 PM', '1:00 PM', '1:30 PM', '2:00 PM', '2:30 PM']);
     });
 
     it('positions the now-line and hides it when panned away', () => {

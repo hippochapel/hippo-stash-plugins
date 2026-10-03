@@ -8,59 +8,59 @@ ui:
   css:
     - tvguide.css
 settings:
-  guide_sfw_text:
-    displayName: "Demo Mode (SFW)"
-    description: "Show fictional text and neutral artwork, hide video and mute audio while preserving TV Guide's layout. Independent of SFW Switch. Masks searches and disables name/logo editing and links to real content. Disabled by default. Reload the page after changing this setting."
-    type: BOOLEAN
-  guide_channel_info:
-    displayName: Show Channel Info Overlay
-    description: "Show channel and scene information in fullscreen. Enabled by default. Disable to hide the overlay while keeping playback controls. Reload the page after changing this setting."
-    type: BOOLEAN
-  guide_min_scenes:
-    displayName: Minimum Scenes Per Channel
-    description: "Sources with fewer scenes than this are not turned into channels. Default 5."
-    type: NUMBER
-  guide_window_hours:
-    displayName: Guide Window (hours)
-    description: "How many hours of programming the guide grid shows at once. Default 3."
-    type: NUMBER
-  guide_12_hour_clock:
+  guide_01_12_hour_clock:
     displayName: Use 12-Hour Clock
-    description: "Show times with AM/PM throughout TV Guide. Disabled by default (24-hour time). Reload the page after changing this setting."
+    description: "Show times with AM/PM throughout TV Guide. Enabled by default. Reload the page after changing this setting."
     type: BOOLEAN
-  guide_pool_cap:
-    displayName: Scenes Per Channel
-    description: "Maximum scenes drawn into a channel's schedule. Lower values load faster on large libraries. Default 100."
-    type: NUMBER
-  guide_new_release_days:
-    displayName: New Release Window (days)
-    description: "Include scenes whose release date is within this many days. Default 30."
-    type: NUMBER
-  guide_recently_added_days:
-    displayName: Recently Added Window (days)
-    description: "Include scenes added to Stash within this many days. Default 14."
-    type: NUMBER
-  guide_movie_min_minutes:
-    displayName: Movie Minimum Length (minutes)
-    description: "Scenes longer than this are included in the Movies channel. Default 90."
-    type: NUMBER
-  guide_short_max_minutes:
-    displayName: Short Maximum Length (minutes)
-    description: "Scenes shorter than this are included in the Shorts channel. Default 5."
-    type: NUMBER
-  guide_short_scene_minutes:
-    displayName: Short Scene Grouping (minutes)
-    description: "Consecutive scenes shorter than this appear as one guide block. Default 15."
-    type: NUMBER
-  guide_autoplay:
+  guide_02_autoplay:
     displayName: Autoplay Preview
     description: "Play the tuned channel in the corner viewer. Disable for a guide-only, no-video view."
     type: BOOLEAN
-  guide_start_muted:
+  guide_03_channel_info:
+    displayName: Show Channel Info Overlay
+    description: "Show channel and scene information in fullscreen. Enabled by default. Disable to hide the overlay while keeping playback controls. Reload the page after changing this setting."
+    type: BOOLEAN
+  guide_04_start_muted:
     displayName: Start Muted
     description: "Start the corner viewer muted. Browsers block autoplay with sound, so disabling this may stop playback from starting on its own."
     type: BOOLEAN
-  guide_navbar_button:
+  guide_05_navbar_button:
     displayName: Show Navbar Button
     description: "Show the TV Guide button in the Stash navigation bar. The guide is always reachable at #tvguide."
     type: BOOLEAN
+  guide_06_sfw_text:
+    displayName: "Demo Mode (SFW)"
+    description: "Show fictional text and neutral artwork, hide video and mute audio while preserving TV Guide's layout. Independent of SFW Switch. Masks searches and disables name/logo editing and links to real content. Disabled by default. Reload the page after changing this setting."
+    type: BOOLEAN
+  guide_07_min_scenes:
+    displayName: Minimum Scenes Per Channel
+    description: "Sources with fewer scenes than this are not turned into channels. Default 5."
+    type: NUMBER
+  guide_08_window_hours:
+    displayName: Guide Window (hours)
+    description: "How many hours of programming the guide grid shows at once. Default 3."
+    type: NUMBER
+  guide_09_pool_cap:
+    displayName: Scenes Per Channel
+    description: "Maximum scenes in a channel's daily rotation. Larger catalogs rotate through different batches each day. Lower values load faster. Default 100."
+    type: NUMBER
+  guide_10_new_release_days:
+    displayName: New Release Window (days)
+    description: "Include scenes whose release date is within this many days. Default 30."
+    type: NUMBER
+  guide_11_recently_added_days:
+    displayName: Recently Added Window (days)
+    description: "Include scenes added to Stash within this many days. Default 14."
+    type: NUMBER
+  guide_12_movie_min_minutes:
+    displayName: Movie Minimum Length (minutes)
+    description: "Scenes longer than this are included in the Movies channel. Default 90."
+    type: NUMBER
+  guide_13_short_max_minutes:
+    displayName: Short Maximum Length (minutes)
+    description: "Scenes shorter than this are included in the Shorts channel. Default 5."
+    type: NUMBER
+  guide_14_short_scene_minutes:
+    displayName: Short Scene Grouping (minutes)
+    description: "Consecutive scenes shorter than this appear as one guide block. Default 15."
+    type: NUMBER

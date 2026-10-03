@@ -58,8 +58,8 @@ studio names in the guide, details and player. Real media stays hidden on hover 
 times, progress, channel surfing and layout remain intact. SFW Switch is not
 required. Search input is masked and still searches real names. Name/logo editing,
 unmuting and links to real content are disabled in the guide while demo mode is on.
-Reload after changing the setting. The existing `guide_sfw_text` setting key is
-retained. This presentation filter does not change library data or saved metadata,
+Reload after changing the setting. Existing demo-mode preferences are preserved
+when settings keys are migrated. This presentation filter does not change library data or saved metadata,
 and only applies inside TV Guide; the surrounding Stash interface is unchanged.
 
 A list of source entries — studios, **models** (performers), tags, groups and
@@ -198,17 +198,42 @@ made by media query, not touch capability, so tablets keep the grid.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `guide_min_scenes` | 5 | Sources below this become no channel |
-| `guide_window_hours` | 3 | Hours visible in the grid at once |
-| `guide_12_hour_clock` | off | Show AM/PM times throughout the guide; reload after changing |
-| `guide_pool_cap` | 100 | Scenes drawn into a channel's schedule |
-| `guide_new_release_days` | 30 | Release-date age for New releases |
-| `guide_recently_added_days` | 14 | Library-added age for Recently added |
-| `guide_movie_min_minutes` | 90 | Minimum length for Movies |
-| `guide_short_max_minutes` | 5 | Maximum length for Shorts |
-| `guide_autoplay` | on | Play the tuned channel in the corner |
-| `guide_start_muted` | on | Browsers block autoplay with sound |
-| `guide_navbar_button` | on | The guide is always at `#tvguide` regardless |
+| `guide_01_12_hour_clock` | on | Show AM/PM times throughout the guide; reload after changing |
+| `guide_02_autoplay` | on | Play the tuned channel in the corner |
+| `guide_03_channel_info` | on | Show channel information in fullscreen |
+| `guide_04_start_muted` | on | Browsers block autoplay with sound |
+| `guide_05_navbar_button` | on | The guide is always at `#tvguide` regardless |
+| `guide_06_sfw_text` | off | Demo mode with fictional text and hidden media |
+| `guide_07_min_scenes` | 5 | Sources below this become no channel |
+| `guide_08_window_hours` | 3 | Hours visible in the grid at once |
+| `guide_09_pool_cap` | 100 | Maximum scenes in each daily rotating batch |
+| `guide_10_new_release_days` | 30 | Release-date age for New releases |
+| `guide_11_recently_added_days` | 14 | Library-added age for Recently added |
+| `guide_12_movie_min_minutes` | 90 | Minimum length for Movies |
+| `guide_13_short_max_minutes` | 5 | Maximum length for Shorts |
+| `guide_14_short_scene_minutes` | 15 | Combine consecutive short scenes into guide blocks |
+
+Unset settings use the defaults above inside TV Guide. Stash's native plugin
+settings form may still display an unset boolean as off or an unset number as
+zero; TV Guide does not override that form. Explicit saved values are respected.
+
+Numbered keys group the six toggles first, followed by numeric settings, using
+Stash's native alphabetical ordering. Labels stay unchanged. On startup, existing
+values are migrated from the old unnumbered keys; already-saved numbered values
+take priority. The migration preserves guide state and other options, and retries
+on the next page load if saving fails. Unset settings are not written as defaults.
+
+Capped channels advance through their catalog in daily batches instead of always
+taking the first 100 scenes. The batch stays stable for the broadcast day, and
+metadata is fetched only for that batch. For an unchanged catalog, all scenes
+become eligible within `ceil(scene count / cap)` days; the daily schedule still
+shuffles those candidates. A short final batch wraps to the beginning. Midnight
+refreshes the tuned channel immediately and other rows as they become visible.
+The continuous All Scenes channel is unchanged and remains the option for playing
+every scene in sequence without a daily reset.
+
+The TV Guide entry uses a TV icon in Stash's main menu and joins the other items
+inside the hamburger menu on smaller screens.
 
 ## Development
 

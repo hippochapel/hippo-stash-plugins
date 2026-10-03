@@ -44,7 +44,7 @@ export function createList({ store, onRowVisible }) {
         element: root,
 
         render(state) {
-            const ids = state.channels.map((c) => c.id).join(',');
+            const ids = state.dayKey + ':' + state.channels.map((c) => c.id).join(',');
             if (ids !== renderedChannelIds) {
                 renderedChannelIds = ids;
                 build(state);
@@ -77,6 +77,7 @@ export function createList({ store, onRowVisible }) {
     };
 
     function build(state) {
+        observer?.disconnect();
         // A filter that matched nothing needs saying; an empty lineup is already
         // reported by the toolbar status.
         if (state.channels.length === 0 && sel.isFilteredEmpty(state)) {

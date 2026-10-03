@@ -14,7 +14,7 @@ function harness(overrides = {}) {
             if (query.includes('findStudios')) {
                 return { findStudios: { studios: [{ id: '1', name: 'S', image_path: null, scene_count: 9 }] } };
             }
-            return { findScenes: { scenes: [{ id: 'a', files: [{ duration: 600 }] }] } };
+            return { findScenes: { count: 1, scenes: [{ id: 'a', files: [{ duration: 600 }] }] } };
         }),
         cache: { get: jest.fn(() => null), set: jest.fn() },
         viewer: {
@@ -92,6 +92,42 @@ describe('loadChannels', () => {
 describe('fetchPool', () => {
     const effect = { type: 'fetchPool', channelId: 'studio:1', sceneFilter: { organized: true } };
 
+    it('refreshes special-channel date windows before the asynchronous lineup reload finishes', async () => {
+        const { run, ctx, state, dispatch, getState } = harness();
+        state.dayKey = '2026-08-23';
+        run({ ...effect, channelId: 'special:recently-added', sceneFilter: { created_at: { value: 'stale' } } }, getState, dispatch);
+        await flush();
+        const expected = new Date(new Date('2026-08-23T00:00:00').getTime() - 14 * 86400000).toISOString();
+        expect(ctx.gql.mock.calls[0][1].filter.created_at).toEqual({ value: expected, modifier: 'GREATER_THAN' });
+        expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: Events.POOL_LOADED }));
+    });
+
+    it('keys rotating pools by date and cap, without reusing the old fixed-batch cache', async () => {
+        const { run, ctx, state, dispatch, getState } = harness();
+        run(effect, getState, dispatch);
+        await flush();
+        state.dayKey = '2026-08-23';
+        state.settings.guide_pool_cap = 25;
+        run(effect, getState, dispatch);
+        await flush();
+        expect(ctx.cache.get.mock.calls).toEqual([
+            ['studio:1', 'rotation-v1:2026-08-22:100'],
+            ['studio:1', 'rotation-v1:2026-08-23:25']
+        ]);
+    });
+
+    it.each([false, true])('ignores an old-day response arriving after midnight (failure: %s)', async (failure) => {
+        let finish;
+        const { run, state, dispatch, getState } = harness({
+            gql: () => new Promise((resolve, reject) => { finish = failure ? () => reject(new Error('late error')) : () => resolve({ findScenes: { count: 0 } }); })
+        });
+        run(effect, getState, dispatch);
+        state.dayKey = '2026-08-23';
+        finish();
+        await flush();
+        expect(dispatch).not.toHaveBeenCalled();
+    });
+
     it('fetches and reports the pool', async () => {
         const { run, dispatch, getState } = harness();
         run(effect, getState, dispatch);
@@ -108,7 +144,7 @@ describe('fetchPool', () => {
         const { run, dispatch, getState, ctx } = harness();
         run(effect, getState, dispatch);
         await flush();
-        expect(ctx.cache.set).toHaveBeenCalledWith('studio:1', '2026-08-22', expect.any(Array));
+        expect(ctx.cache.set).toHaveBeenCalledWith('studio:1', 'rotation-v1:2026-08-22:100', expect.any(Array));
     });
 
     it('serves a cache hit without touching the network', async () => {
@@ -148,14 +184,14 @@ describe('fetchPool', () => {
         state.settings = { ...state.settings, guide_pool_cap: 42 };
         run(effect, getState, dispatch);
         await flush();
-        expect(ctx.gql.mock.calls[0][1].find.per_page).toBe(42);
+        expect(ctx.gql.mock.calls[1][1].find.per_page).toBe(42);
     });
 
     it('prefers a per-channel cap carried on the effect', async () => {
         const { run, dispatch, getState, ctx } = harness();
         run({ ...effect, poolCap: 400 }, getState, dispatch);
         await flush();
-        expect(ctx.gql.mock.calls[0][1].find.per_page).toBe(400);
+        expect(ctx.gql.mock.calls[1][1].find.per_page).toBe(400);
     });
 
     it('never runs more than the concurrency limit at once', async () => {
@@ -168,7 +204,7 @@ describe('fetchPool', () => {
                     peak = Math.max(peak, active);
                     setTimeout(() => {
                         active--;
-                        resolve({ findScenes: { scenes: [] } });
+                        resolve({ findScenes: { count: 0, scenes: [] } });
                     }, 5);
                 })
         );

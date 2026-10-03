@@ -11,7 +11,7 @@ import './styles/demo.css';
 
 import { createClient } from './api/client.js';
 import { fetchSceneStreams } from './api/scenes.js';
-import { loadPluginConfiguration, normalizeSettings } from './api/settings.js';
+import { loadPluginConfiguration, migratePluginSettings, normalizeSettings } from './api/settings.js';
 import { createPluginStorage } from './api/pluginStorage.js';
 import { createPoolCache } from './api/cache.js';
 import { parseLineup, DEFAULT_LINEUP } from './domain/lineup.js';
@@ -176,7 +176,7 @@ export function start() {
         if (store.getState().open) store.dispatch({ type: Events.TICK, nowMs: Date.now() });
     }, TICK_MS);
 
-    loadPluginConfiguration(gql).then((configuration) => {
+    loadPluginConfiguration(gql).then((configuration) => migratePluginSettings(gql, configuration)).then((configuration) => {
         const settings = normalizeSettings(configuration);
         storage = createPluginStorage({ gql, initialConfiguration: configuration });
         store.dispatch({ type: Events.SETTINGS_LOADED, settings });

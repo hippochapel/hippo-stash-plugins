@@ -216,9 +216,8 @@ export function reduce(state, event) {
 
             const { key, startMs } = dayBucket(event.nowMs);
 
-            // Midnight. The seed and the playback cursor both pivot on the day,
-            // so every schedule is rebuilt together and the guide starts a new
-            // broadcast day rather than drifting.
+            // Midnight starts a new batch for capped channels. Keep the full
+            // library's continuous rotation; other pools reload on demand.
             if (key !== state.dayKey) {
                 const specialChannelIds = new Set(
                     state.allChannels.filter((channel) => channel.source === 'special'
@@ -226,13 +225,13 @@ export function reduce(state, event) {
                 );
                 const schedules = {};
                 for (const [channelId, pool] of Object.entries(state.pools)) {
-                    if (specialChannelIds.has(channelId)) continue;
+                    if (channelId !== ALL_SCENES_CHANNEL_ID) continue;
                     if (pool.status === PoolStatus.READY) {
                         schedules[channelId] = buildDaySchedule(channelId, pool.scenes, key);
                     }
                 }
                 const pools = Object.fromEntries(
-                    Object.entries(state.pools).filter(([channelId]) => !specialChannelIds.has(channelId))
+                    Object.entries(state.pools).filter(([channelId]) => channelId === ALL_SCENES_CHANNEL_ID)
                 );
                 const rolled = {
                     ...state,
@@ -243,9 +242,13 @@ export function reduce(state, event) {
                     schedules,
                     windowStartMs: snapToStep(event.nowMs, HALF_HOUR_MS)
                 };
+                const requested = rolled.tunedChannelId ? reduce(rolled, {
+                    type: Events.POOL_REQUESTED, channelId: rolled.tunedChannelId
+                }) : { state: rolled, effects: [] };
                 return {
-                    state: rolled,
+                    state: requested.state,
                     effects: [
+                        ...requested.effects,
                         ...tuneEffects(rolled, rolled.tunedChannelId, event.nowMs),
                         ...(specialChannelIds.size > 0 ? [Effects.reloadChannels()] : [])
                     ]
@@ -317,7 +320,8 @@ export function reduce(state, event) {
             // Rows re-enter the viewport constantly; only the first request counts.
             if (existing && existing.status !== PoolStatus.ERROR) return { state, effects };
 
-            const channel = state.channels.find((c) => c.id === event.channelId);
+            const channel = state.channels.find((c) => c.id === event.channelId)
+                || (event.channelId === state.tunedChannelId && state.allChannels.find((c) => c.id === event.channelId));
             if (!channel) return { state, effects };
 
             return {

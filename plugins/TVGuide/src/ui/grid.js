@@ -192,7 +192,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     // ---- rows ---------------------------------------------------------------
 
     function rowsSignature(state) {
-        return state.channelGroups
+        return state.dayKey + ':' + state.channelGroups
             .map(
                 (group) =>
                     `${group.key}:${group.collapsed ? 'c' : 'o'}:` +
@@ -202,6 +202,7 @@ export function createGrid({ store, onRowVisible, touchGuard }) {
     }
 
     function buildRows(state) {
+        observer?.disconnect();
         const nodes = [];
         for (const group of state.channelGroups) {
             nodes.push(groupHeader(group));

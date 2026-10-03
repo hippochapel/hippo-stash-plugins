@@ -8,10 +8,29 @@
 
 export const PLUGIN_ID = 'TVGuide';
 
+// Stash sorts manifest keys alphabetically. Keep the ordering at the config
+// boundary so the rest of the guide can continue using its stable setting names.
+export const SETTING_KEYS = {
+    guide_12_hour_clock: 'guide_01_12_hour_clock',
+    guide_autoplay: 'guide_02_autoplay',
+    guide_channel_info: 'guide_03_channel_info',
+    guide_start_muted: 'guide_04_start_muted',
+    guide_navbar_button: 'guide_05_navbar_button',
+    guide_sfw_text: 'guide_06_sfw_text',
+    guide_min_scenes: 'guide_07_min_scenes',
+    guide_window_hours: 'guide_08_window_hours',
+    guide_pool_cap: 'guide_09_pool_cap',
+    guide_new_release_days: 'guide_10_new_release_days',
+    guide_recently_added_days: 'guide_11_recently_added_days',
+    guide_movie_min_minutes: 'guide_12_movie_min_minutes',
+    guide_short_max_minutes: 'guide_13_short_max_minutes',
+    guide_short_scene_minutes: 'guide_14_short_scene_minutes'
+};
+
 export const DEFAULT_SETTINGS = {
     guide_min_scenes: 5,
     guide_window_hours: 3,
-    guide_12_hour_clock: false,
+    guide_12_hour_clock: true,
     guide_pool_cap: 100,
     guide_new_release_days: 30,
     guide_recently_added_days: 14,
@@ -38,9 +57,52 @@ const NUMBER_BOUNDS = {
 };
 
 const SETTINGS_QUERY = `query TVGuideConfiguration { configuration { plugins } }`;
+const CONFIGURE_SETTINGS_MUTATION = `mutation MigrateTVGuideSettings($pluginId: ID!, $input: Map!) {
+    configurePlugin(plugin_id: $pluginId, input: $input)
+}`;
+const owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
+function orderedConfiguration(configuration) {
+    const migrated = { ...configuration };
+    let changed = false;
+    for (const [legacy, ordered] of Object.entries(SETTING_KEYS)) {
+        if (!owns(configuration, legacy)) continue;
+        // An explicit new value (including false, zero or null) takes priority.
+        if (!owns(configuration, ordered)) migrated[ordered] = configuration[legacy];
+        delete migrated[legacy];
+        changed = true;
+    }
+    return changed ? migrated : configuration;
+}
+
+/** Move only existing values; leave unset defaults unset in Stash's native UI. */
+export async function migratePluginSettings(gql, configuration) {
+    if (orderedConfiguration(configuration) === configuration) return configuration;
+    let latest = configuration;
+    try {
+        // configurePlugin replaces the whole map. Re-read before writing so
+        // recent edits, unknown options and tvguide_state are carried forward.
+        const data = await gql(SETTINGS_QUERY);
+        if (!data?.configuration?.plugins || typeof data.configuration.plugins !== 'object') {
+            throw new Error('Plugin configuration is unavailable');
+        }
+        const remote = data.configuration.plugins[PLUGIN_ID] ?? {};
+        if (typeof remote !== 'object' || Array.isArray(remote)) throw new Error('Invalid plugin configuration');
+        latest = remote;
+        const migrated = orderedConfiguration(latest);
+        if (migrated === latest) return latest;
+        await gql(CONFIGURE_SETTINGS_MUTATION, { pluginId: PLUGIN_ID, input: migrated });
+        return migrated;
+    } catch (_) {
+        // Legacy reads remain supported, so a failed migration cannot reset the
+        // guide's preferences. The next page load will retry the migration.
+        return latest;
+    }
+}
 
 function coerce(key, raw) {
     const fallback = DEFAULT_SETTINGS[key];
+    if (raw == null || (typeof raw === 'string' && !raw.trim())) return fallback;
 
     if (typeof fallback === 'boolean') {
         return typeof raw === 'boolean' ? raw : fallback;
@@ -69,7 +131,8 @@ export function normalizeSettings(stored) {
     const source = stored && typeof stored === 'object' ? stored : {};
     const out = {};
     for (const key of Object.keys(DEFAULT_SETTINGS)) {
-        out[key] = key in source ? coerce(key, source[key]) : DEFAULT_SETTINGS[key];
+        const storedKey = owns(source, SETTING_KEYS[key]) ? SETTING_KEYS[key] : key;
+        out[key] = owns(source, storedKey) ? coerce(key, source[storedKey]) : DEFAULT_SETTINGS[key];
     }
     return out;
 }

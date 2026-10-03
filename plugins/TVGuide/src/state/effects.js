@@ -9,6 +9,7 @@ import { Events } from './actions.js';
 import { resolveLineup, fetchCatalog, fetchCatalogPage } from '../domain/providers/index.js';
 import { fetchScenePool, fetchAllScenePool } from '../api/scenes.js';
 import { ALL_SCENES_CHANNEL_ID } from '../domain/allScenes.js';
+import specialProvider from '../domain/providers/special.js';
 
 /** Concurrent pool fetches. Enough to fill a screen, few enough not to
  *  stampede the server when someone scrolls fast through a long lineup. */
@@ -67,7 +68,7 @@ export function createEffectRunner({
                 const { dayKey, settings } = getState();
                 const poolCap = effect.poolCap || settings.guide_pool_cap;
                 const allScenes = effect.channelId === ALL_SCENES_CHANNEL_ID;
-                const cacheKey = allScenes ? 'all-scenes-index-v2' : dayKey;
+                const cacheKey = allScenes ? 'all-scenes-index-v2' : `rotation-v1:${dayKey}:${poolCap}`;
 
                 const cached = cache && cache.get(effect.channelId, cacheKey);
                 if (cached) {
@@ -75,20 +76,33 @@ export function createEffectRunner({
                     return;
                 }
 
-                schedule(() =>
-                    (allScenes ? fetchAllScenePool(gql) : fetchScenePool(gql, effect.sceneFilter, poolCap)).then(
-                        (scenes) => {
-                            if (cache) cache.set(effect.channelId, cacheKey, scenes);
+                schedule(async () => {
+                    if (!allScenes && getState().dayKey !== dayKey) return;
+                    try {
+                        let sceneFilter = effect.sceneFilter;
+                        if (!allScenes && effect.channelId.startsWith('special:')) {
+                            // Recompute date windows at broadcast midnight. The
+                            // lineup reload may still carry yesterday's filters.
+                            const [channel] = await specialProvider.listChannels(
+                                { ids: [effect.channelId.slice('special:'.length)] }, gql, settings,
+                                new Date(`${dayKey}T00:00:00`)
+                            );
+                            sceneFilter = channel?.sceneFilter || sceneFilter;
+                        }
+                        const scenes = allScenes ? await fetchAllScenePool(gql)
+                            : await fetchScenePool(gql, sceneFilter, poolCap, dayKey, effect.channelId);
+                        if (cache) cache.set(effect.channelId, cacheKey, scenes);
+                        if (allScenes || getState().dayKey === dayKey) {
                             dispatch({ type: Events.POOL_LOADED, channelId: effect.channelId, scenes });
-                        },
-                        (error) =>
-                            dispatch({
-                                type: Events.POOL_FAILED,
-                                channelId: effect.channelId,
-                                message: error.message
-                            })
-                    )
-                );
+                        }
+                    } catch (error) {
+                        if (allScenes || getState().dayKey === dayKey) dispatch({
+                            type: Events.POOL_FAILED,
+                            channelId: effect.channelId,
+                            message: error.message
+                        });
+                    }
+                });
                 return;
             }
 

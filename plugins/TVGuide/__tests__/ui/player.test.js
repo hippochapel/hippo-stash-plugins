@@ -910,7 +910,7 @@ describe('fullscreen controls and info visibility', () => {
     });
 
     it('shows scheduled times and remaining minutes using the playback clock and clock preference', () => {
-        const { player, store } = mount({ playerMode: 'fullscreen', viewerPaused: true, nowMs: NOON + 5 * 60000 });
+        const { player, store } = mount({ playerMode: 'fullscreen', viewerPaused: true, nowMs: NOON + 5 * 60000, settings: { ...createInitialState().settings, guide_12_hour_clock: false } });
         const time = q(player, '.tvguide-channel-info-time');
         expect(time.textContent).toBe('12:00 – 12:30 · 25 min left');
         player.renderControls({ ...store.getState(), nowMs: NOON + 10 * 60000 });

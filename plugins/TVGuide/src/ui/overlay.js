@@ -11,7 +11,7 @@ import { el, replaceChildren } from './dom.js';
 import { Events } from '../state/actions.js';
 import { SOURCE_LABELS } from '../domain/lineup.js';
 import { PINNED_GROUP } from '../domain/channelPrefs.js';
-import { setIcon } from './icons.js';
+import { setIcon, ICONS } from './icons.js';
 import * as sel from '../state/selectors.js';
 import { createBanner } from './banner.js';
 import { createGrid } from './grid.js';
@@ -185,9 +185,8 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             class: 'tvguide-close',
             type: 'button',
             'aria-label': 'Close TV Guide',
-            text: '\u00d7',
             onclick: () => close()
-        })
+        }, ICONS.close())
     );
 
     const topbar = el(

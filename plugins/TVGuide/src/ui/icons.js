@@ -32,6 +32,8 @@ function icon(paths, { filled = true } = {}) {
 }
 
 export const ICONS = {
+    tv: () => icon(['M3 3h18a2 2 0 012 2v12a2 2 0 01-2 2h-8v2h4v2H7v-2h4v-2H3a2 2 0 01-2-2V5a2 2 0 012-2zm0 2v12h18V5H3z']),
+    close: () => icon(['M6 6l12 12M18 6L6 18'], { filled: false }),
     play: () => icon(['M8 5v14l11-7z']),
     pause: () => icon(['M6 5h4v14H6zM14 5h4v14h-4z']),
     muted: () => icon(['M4 9v6h4l5 4V5L8 9H4z', 'M16.5 9.5l5 5M21.5 9.5l-5 5']),

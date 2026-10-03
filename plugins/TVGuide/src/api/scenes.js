@@ -4,9 +4,15 @@
  * Every channel source reduces to a SceneFilterType, so one fetcher serves all
  * of them. The pool must be *stable*: the schedule is a seeded shuffle of it,
  * so if the pool came back in a different order each time, the "live" illusion
- * would collapse. Hence the fixed `sort: id, direction: ASC` -- the cap then
- * always takes the same slice of the same list.
+ * would collapse. A stable ID sort and daily rotating page keep today's pool
+ * repeatable while letting every part of a large catalog enter the rotation.
  */
+
+import { dayBucket, hashString } from '../domain/schedule.js';
+
+const SCENE_COUNT_QUERY = `query TVGuideSceneCount($filter: SceneFilterType) {
+  findScenes(scene_filter: $filter) { count }
+}`;
 
 export const SCENE_POOL_QUERY = `query TVGuideScenePool($filter: SceneFilterType, $find: FindFilterType) {
   findScenes(scene_filter: $filter, filter: $find) {
@@ -29,12 +35,30 @@ export const SCENE_POOL_QUERY = `query TVGuideScenePool($filter: SceneFilterType
  * @param sceneFilter  a SceneFilterType, straight from a channel
  * @param poolCap   how many scenes at most may enter the schedule
  */
-export async function fetchScenePool(gql, sceneFilter, poolCap) {
-    const data = await gql(SCENE_POOL_QUERY, {
-        filter: sceneFilter,
-        find: { per_page: poolCap, page: 1, sort: 'id', direction: 'ASC' }
-    });
-    return data?.findScenes?.scenes || [];
+export async function fetchScenePool(gql, sceneFilter, poolCap, dayKey = dayBucket(Date.now()).key, channelId = JSON.stringify(sceneFilter)) {
+    // Count first so we fetch metadata only for the batch we will actually use.
+    const result = await gql(SCENE_COUNT_QUERY, { filter: sceneFilter });
+    const count = result?.findScenes?.count;
+    if (!Number.isInteger(count) || count < 0) throw new Error('Unable to count channel scenes');
+    if (!count) return [];
+    const pages = Math.ceil(count / poolCap);
+    const day = Math.floor(Date.parse(`${dayKey}T00:00:00Z`) / 86400000) || 0;
+    const page = ((day + hashString(channelId)) % pages + pages) % pages + 1;
+    const fetchPage = async (pageNumber, size) => {
+        const data = await gql(SCENE_POOL_QUERY, {
+            filter: sceneFilter,
+            find: { per_page: size, page: pageNumber, sort: 'id', direction: 'ASC' }
+        });
+        if (!Array.isArray(data?.findScenes?.scenes)) throw new Error('Unable to load channel scenes');
+        return data.findScenes.scenes;
+    };
+    const scenes = [...await fetchPage(page, poolCap)];
+    // Wrap a short final page so a 101-scene catalog doesn't spend every other
+    // day repeating just its final scene. Never request more than the cap.
+    if (count > poolCap && page > 1 && scenes.length < poolCap) {
+        scenes.push(...await fetchPage(1, poolCap - scenes.length));
+    }
+    return [...new Map(scenes.map((scene) => [scene.id, scene])).values()];
 }
 
 const SCENE_INDEX_QUERY = `query TVGuideSceneIndex($filter: SceneFilterType, $find: FindFilterType) {

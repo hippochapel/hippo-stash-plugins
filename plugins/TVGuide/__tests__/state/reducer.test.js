@@ -224,19 +224,18 @@ describe('TICK', () => {
         expect(effectTypes(effects)).toContain('tuneViewer');
     });
 
-    it('rebuilds every schedule when the broadcast day rolls over', () => {
+    it('invalidates daily pools and requests the tuned channel when the broadcast day rolls over', () => {
         const beforeMidnight = new Date(2026, 7, 22, 23, 59, 30).getTime();
         const afterMidnight = new Date(2026, 7, 23, 0, 0, 30).getTime();
 
         const state = readyState({ nowMs: beforeMidnight });
-        const { state: next } = run(state, { type: Events.TICK, nowMs: afterMidnight });
+        const { state: next, effects } = run(state, { type: Events.TICK, nowMs: afterMidnight });
 
         expect(next.dayKey).toBe('2026-08-23');
         expect(next.dayStartMs).toBe(dayBucket(afterMidnight).startMs);
-        expect(next.schedules['studio:1']).not.toBe(state.schedules['studio:1']);
-        // A new day means a new shuffle.
-        const order = (s) => s.entries.map((e) => e.scene.id);
-        expect(order(next.schedules['studio:1'])).not.toEqual(order(state.schedules['studio:1']));
+        expect(next.schedules['studio:1']).toBeUndefined();
+        expect(next.pools['studio:1'].status).toBe(PoolStatus.LOADING);
+        expect(effects).toContainEqual(expect.objectContaining({ type: 'fetchPool', channelId: 'studio:1' }));
     });
 
     it('resets the window to the new day rather than leaving it in yesterday', () => {
@@ -248,14 +247,22 @@ describe('TICK', () => {
         expect(state.windowStartMs).toBe(dayBucket(afterMidnight).startMs);
     });
 
-    it('only rebuilds schedules for pools that actually loaded', () => {
+    it('refreshes the tuned channel even when its row is filtered out at midnight', () => {
+        const before = readyState({ channels: [] });
+        const { state, effects } = run(before, { type: Events.TICK, nowMs: new Date(2026, 7, 23).getTime() });
+        expect(state.pools[before.tunedChannelId].status).toBe(PoolStatus.LOADING);
+        expect(effects).toContainEqual(expect.objectContaining({ type: 'fetchPool', channelId: before.tunedChannelId }));
+    });
+
+    it('drops yesterday\'s pending pools without eagerly requesting untuned channels', () => {
         const state = readyState();
         state.pools['studio:2'] = { status: PoolStatus.LOADING, scenes: [], error: null };
         const { state: next } = run(state, {
             type: Events.TICK,
             nowMs: new Date(2026, 7, 23, 0, 1).getTime()
         });
-        expect(Object.keys(next.schedules)).toEqual(['studio:1']);
+        expect(Object.keys(next.schedules)).toEqual([]);
+        expect(next.pools['studio:2']).toBeUndefined();
     });
 
     it('keeps the full-library channel pool and continuous schedule at midnight', () => {
@@ -287,7 +294,7 @@ describe('TICK', () => {
         expect(effects.map((effect) => effect.type)).toContain('loadChannels');
         expect(next.pools['special:new-releases']).toBeUndefined();
         expect(next.schedules['special:new-releases']).toBeUndefined();
-        expect(next.pools['studio:1']).toEqual(state.pools['studio:1']);
+        expect(next.pools['studio:1'].status).toBe(PoolStatus.LOADING);
     });
 
     it('stays quiet when nothing is tuned', () => {
