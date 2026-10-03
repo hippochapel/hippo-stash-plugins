@@ -32,6 +32,7 @@ export const Events = {
     MOVE_FOCUS: 'MOVE_FOCUS',
     LAYOUT_CHANGED: 'LAYOUT_CHANGED',
     SET_MUTED: 'SET_MUTED',
+    VIEWER_MUTED: 'VIEWER_MUTED',
 
     // Channel manager
     PREFS_LOADED: 'PREFS_LOADED',

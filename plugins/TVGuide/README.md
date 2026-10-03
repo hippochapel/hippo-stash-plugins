@@ -44,6 +44,12 @@ together would lose it.
 
 ### The lineup
 
+TV Guide follows the community **SFW Switch** plugin when it is installed:
+media and scene/channel text blur with its toggle, and its “never unblur” option
+also applies in the guide and fullscreen player. Playback controls stay readable.
+SFW Switch handles its optional audio muting; TV Guide reflects the actual mute
+state without overwriting your saved mute preference.
+
 A list of source entries — studios, **models** (performers), tags, groups and
 saved filters mix freely in one guide. The Special section contains five
 individual channels, which are explicit picks just like any other channel:

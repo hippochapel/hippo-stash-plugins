@@ -899,6 +899,9 @@ export function reduce(state, event) {
                 effects: [Effects.setMuted(event.muted), Effects.persist(STORAGE_KEYS.muted, String(event.muted))]
             };
 
+        case Events.VIEWER_MUTED:
+            return { state: state.muted === event.muted ? state : { ...state, muted: event.muted }, effects };
+
         default:
             return { state, effects };
     }

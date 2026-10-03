@@ -6,6 +6,7 @@
  */
 
 import './styles/index.css';
+import './styles/sfwSwitch.css';
 
 import { createClient } from './api/client.js';
 import { fetchSceneStreams } from './api/scenes.js';
@@ -27,6 +28,7 @@ import { createAnnouncer } from './ui/a11y.js';
 import { createViewer } from './ui/viewer.js';
 import { createOverlay, HASH } from './ui/overlay.js';
 import { createNavbarButton } from './ui/navbarButton.js';
+import { watchSfwSwitch } from './ui/sfwSwitch.js';
 import { createTouchGuard } from './ui/gestures.js';
 import { watchLayout } from './ui/layoutWatcher.js';
 import { createKeyboardHandler } from './ui/keyboard.js';
@@ -117,6 +119,7 @@ export function start() {
     });
 
     overlayRef = overlay;
+    const stopSfwSwitch = watchSfwSwitch({ root: overlay.element, video: viewer.element, store });
     store.subscribe((state) => overlay.render(state));
     const stopLazySceneDetails = createLazySceneDetails({ store, gql });
 
@@ -201,6 +204,7 @@ export function start() {
     });
 
     return function stop() {
+        stopSfwSwitch();
         stopLazySceneDetails();
         clearInterval(ticker);
         stopLayoutWatch();
