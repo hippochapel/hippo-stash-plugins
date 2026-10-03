@@ -325,6 +325,29 @@ describe('list rendering', () => {
 });
 
 describe('banner', () => {
+    it('collapses mobile details by default, keeps the disclosure stable on ticks, and resets for another scene', () => {
+        const banner = createBanner();
+        const state = baseState({ layout: 'list' });
+        banner.render(state);
+        const more = banner.element.querySelector('.tvguide-show-more');
+        const extra = banner.element.querySelector('.tvguide-banner-extra');
+        expect(extra.hidden).toBe(true);
+        more.click();
+        expect(extra.hidden).toBe(false);
+        expect(more.getAttribute('aria-expanded')).toBe('true');
+        banner.render({ ...state, nowMs: NOON + 1000 });
+        expect(banner.element.querySelector('.tvguide-show-more')).toBe(more);
+        expect(extra.hidden).toBe(false);
+        more.click();
+        expect(extra.hidden).toBe(true);
+        more.click();
+        const future = state.schedules['studio:1'].entries[2];
+        banner.render({ ...state, focus: { channelId: 'studio:1', timeMs: DAY_START + future.offsetMs } });
+        expect(banner.element.querySelector('.tvguide-banner-extra').hidden).toBe(true);
+        banner.render({ ...state, layout: 'grid' });
+        expect(banner.element.querySelector('.tvguide-banner-extra').hidden).toBe(false);
+        expect(banner.element.querySelector('.tvguide-show-more').hidden).toBe(true);
+    });
     it('describes the focused programme, with its poster', () => {
         const banner = createBanner();
         banner.render(baseState());
@@ -543,15 +566,15 @@ describe('overlay', () => {
         store.dispatch({ type: Events.LAYOUT_CHANGED, layout: 'list' });
         const list = overlay.element.querySelector('.tvguide-list');
         const tunedRow = list.querySelector('[data-channel-id="studio:1"]');
-        Object.defineProperty(tunedRow, 'offsetTop', { value: 420 });
+        tunedRow.getBoundingClientRect = () => ({ top: 420 });
 
         overlay.element.querySelector('.tvguide-jump').click();
 
-        expect(list.scrollTop).toBe(420);
+        expect(overlay.element.scrollTop).toBe(420);
         const top = overlay.element.querySelector('.tvguide-list-top');
         expect(top.hidden).toBe(false);
         top.click();
-        expect(list.scrollTop).toBe(0);
+        expect(overlay.element.scrollTop).toBe(0);
         overlay.destroy();
     });
 
@@ -762,7 +785,7 @@ describe('overlay', () => {
         expect(overlay.element.querySelector('.tvguide-player').hidden).toBe(true);
     });
 
-    it.each(['grid', 'list'])('preserves the %s channel position and restores theater scrolling on mode changes', (layout) => {
+    it.each(['grid'])('preserves the %s channel position and restores theater scrolling on mode changes', (layout) => {
         const { store, overlay } = mountOverlay(baseState({ layout }));
         const scroller = overlay.element.querySelector(layout === 'grid' ? '.tvguide-grid-scroll' : '.tvguide-list');
         scroller.scrollTop = 420;

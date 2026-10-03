@@ -96,6 +96,15 @@ URLs load on demand for the visible guide time window, the current and next scen
 and the selected scene. Moving the time window loads its new scenes, with at most
 two detail requests in flight.
 
+Scene metadata edits made through Stash update the guide from Stash's existing
+mutation responses, including edits in other open tabs of the same browser.
+Titles, descriptions, artwork, performers and tags update without polling,
+extra API requests, reloading channel pools, or interrupting playback. A small
+session cache of edits also keeps older cached pools from restoring stale text.
+This requires Stash's exposed Apollo client; edits made by external tools or
+background jobs cannot be detected until fresh scene data is otherwise loaded.
+The current schedule's order and durations stay fixed until its normal refresh.
+
 An entry with `minScenes` is a **rule**: while it is on, a newly-added studio
 becomes a channel on its own. An entry with `ids` is an **explicit pick**.
 Removing a rule-swept channel in the manager freezes the rest into explicit
@@ -190,9 +199,11 @@ The guide is fully operable by mouse, keyboard and touch. It follows the ARIA
 grid pattern with a roving tabindex, traps focus while open, and announces
 channel changes through a live region.
 
-On viewports under 768px the time-grid is replaced by a vertical Now/Next list —
-the layout that actually suits a phone, and where descriptions fit. The choice is
-made by media query, not touch capability, so tablets keep the grid.
+On viewports under 768px, or short touch viewports such as a phone in landscape,
+the time-grid is replaced by a vertical Now/Next list. The video fills the width
+and theater mode is hidden. Description, models and tags sit behind a
+default-collapsed **Show more** button. Expanded details grow naturally, with one
+scroll area shared by the video, details and channels. Wider tablets keep the grid.
 
 ## Settings
 

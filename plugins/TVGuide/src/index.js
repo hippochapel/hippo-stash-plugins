@@ -14,6 +14,7 @@ import { fetchSceneStreams } from './api/scenes.js';
 import { loadPluginConfiguration, migratePluginSettings, normalizeSettings } from './api/settings.js';
 import { createPluginStorage } from './api/pluginStorage.js';
 import { createPoolCache } from './api/cache.js';
+import { watchSceneMetadata } from './api/sceneMetadata.js';
 import { parseLineup, DEFAULT_LINEUP } from './domain/lineup.js';
 import {
     parsePrefs,
@@ -115,6 +116,11 @@ export function start() {
     // `player` is created by the overlay, so the runner reaches it lazily.
     let overlayRef = null;
     const store = createStore({ runEffect });
+    store.dispatch({ type: Events.SCENE_METADATA_UPDATED, scenes: Object.values(cache.getMetadata()) });
+    const stopMetadataWatch = watchSceneMetadata({ onScenes: (scenes) => {
+        cache.updateMetadata(scenes);
+        store.dispatch({ type: Events.SCENE_METADATA_UPDATED, scenes });
+    } });
 
     const overlay = createOverlay({
         store,
@@ -214,6 +220,7 @@ export function start() {
     });
 
     return function stop() {
+        stopMetadataWatch();
         stopSfwSwitch();
         sfwText.destroy();
         stopLazySceneDetails();

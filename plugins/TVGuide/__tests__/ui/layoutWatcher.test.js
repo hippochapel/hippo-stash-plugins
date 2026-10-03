@@ -31,10 +31,10 @@ describe('layoutFor', () => {
 });
 
 describe('watchLayout', () => {
-    it('queries width, not touch capability', () => {
+    it('uses a narrow viewport or a short touch viewport without treating all tablets as phones', () => {
         const matchMediaFn = jest.fn(() => fakeMedia());
         watchLayout({ store: { dispatch: jest.fn() }, matchMediaFn });
-        expect(matchMediaFn).toHaveBeenCalledWith('(max-width: 767px)');
+        expect(matchMediaFn).toHaveBeenCalledWith(MOBILE_QUERY);
     });
 
     it('applies the current layout immediately', () => {

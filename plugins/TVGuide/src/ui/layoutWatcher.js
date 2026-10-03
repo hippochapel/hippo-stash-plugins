@@ -3,12 +3,13 @@
  *
  * Deliberately a media query and not touch capability: a tablet has touch but
  * also has the width to show a real grid, and plenty of laptops report touch.
- * Width is what actually decides whether a time-grid is readable.
+ * Phones in landscape also need the list: their width grows on rotation,
+ * but their short touch viewport still cannot comfortably hold the grid.
  */
 
 import { Events } from '../state/actions.js';
 
-export const MOBILE_QUERY = '(max-width: 767px)';
+export const MOBILE_QUERY = '(max-width: 767px), (max-height: 500px) and (pointer: coarse)';
 
 export function layoutFor(matches) {
     return matches ? 'list' : 'grid';

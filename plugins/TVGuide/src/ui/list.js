@@ -39,6 +39,17 @@ export function createList({ store, onRowVisible }) {
 
     let renderedChannelIds = '';
     let renderedFocusChannelId = null;
+    const renderedRows = new WeakMap();
+
+    function scrollToItem(item, alignStart = false) {
+        if (!item) return;
+        const scroller = root.closest('.tvguide-overlay') || root;
+        const top = item.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        if (alignStart || top < scroller.scrollTop) scroller.scrollTop = top;
+        else if (top + item.offsetHeight > scroller.scrollTop + scroller.clientHeight) {
+            scroller.scrollTop = Math.max(0, top + item.offsetHeight - scroller.clientHeight);
+        }
+    }
 
     return {
         element: root,
@@ -55,12 +66,7 @@ export function createList({ store, onRowVisible }) {
                 && state.playerMode !== 'fullscreen') {
                 const item = [...root.querySelectorAll('[data-channel-id]')]
                     .find((node) => node.dataset.channelId === state.focus.channelId);
-                if (item) {
-                    if (item.offsetTop < root.scrollTop) root.scrollTop = item.offsetTop;
-                    else if (item.offsetTop + item.offsetHeight > root.scrollTop + root.clientHeight) {
-                        root.scrollTop = Math.max(0, item.offsetTop + item.offsetHeight - root.clientHeight);
-                    }
-                }
+                scrollToItem(item);
             }
             renderedFocusChannelId = state.focus?.channelId ?? null;
         },
@@ -68,7 +74,7 @@ export function createList({ store, onRowVisible }) {
         scrollChannelIntoView(channelId) {
             const safeId = String(channelId).replace(/"/g, '\\"');
             const item = root.querySelector(`[data-channel-id="${safeId}"]`);
-            if (item) root.scrollTop = item.offsetTop;
+            scrollToItem(item, true);
         },
 
         destroy() {
@@ -111,6 +117,22 @@ export function createList({ store, onRowVisible }) {
             const status = sel.poolStatus(state, channelId);
             const live = sel.liveProgram(state, channelId);
             const next = sel.nextProgram(state, channelId);
+            const signature = [channel, isTuned, status, live?.scene, live?.startMs, next?.scene, next?.startMs,
+                state.settings.guide_12_hour_clock];
+            const previous = renderedRows.get(item);
+            if (previous && signature.every((value, i) => value === previous[i])) {
+                if (live) {
+                    const pct = Math.min(100, Math.max(0, ((state.nowMs - live.startMs) / live.durationMs) * 100));
+                    item.querySelector('.tvguide-progress')?.setAttribute('aria-valuenow', String(Math.round(pct)));
+                    const fill = item.querySelector('.tvguide-progress-fill');
+                    if (fill) fill.style.width = `${pct}%`;
+                    const times = item.querySelector('.tvguide-list-times');
+                    const text = timeText(state, live, next);
+                    if (times && times.textContent !== text) times.textContent = text;
+                }
+                continue;
+            }
+            renderedRows.set(item, signature);
 
             replaceChildren(
                 item,
@@ -143,6 +165,11 @@ export function createList({ store, onRowVisible }) {
                 null
             );
         }
+    }
+
+    function timeText(state, live, next) {
+        return `${formatRemaining(live.endMs - state.nowMs)}`
+            + (next ? ` · Next ${formatClock(next.startMs, state.settings.guide_12_hour_clock)}: ${sceneTitle(next.scene)}` : '');
     }
 
     function body(state, status, live, next) {
@@ -183,8 +210,7 @@ export function createList({ store, onRowVisible }) {
             el(
                 'span',
                 { class: 'tvguide-list-times' },
-                `${formatRemaining(live.endMs - state.nowMs)}`,
-                next ? ` · Next ${formatClock(next.startMs, state.settings.guide_12_hour_clock)}: ${sceneTitle(next.scene)}` : ''
+                timeText(state, live, next)
             )
         );
     }

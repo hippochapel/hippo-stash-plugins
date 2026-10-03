@@ -20,6 +20,7 @@ export const SCENE_POOL_QUERY = `query TVGuideScenePool($filter: SceneFilterType
       id
       title
       details
+      updated_at
       date
       paths { screenshot stream }
       files { duration }
@@ -63,7 +64,7 @@ export async function fetchScenePool(gql, sceneFilter, poolCap, dayKey = dayBuck
 
 const SCENE_INDEX_QUERY = `query TVGuideSceneIndex($filter: SceneFilterType, $find: FindFilterType) {
     findScenes(scene_filter: $filter, filter: $find) {
-        scenes { id title files { duration } }
+        scenes { id title updated_at files { duration } }
     }
 }`;
 
@@ -85,7 +86,7 @@ export async function fetchAllScenePool(gql) {
 export async function fetchSceneDetails(gql, id) {
     const data = await gql(`query TVGuideSceneDetails($id: ID!) {
         findScene(id: $id) {
-            id title details date files { duration }
+            id title details date updated_at files { duration }
             paths { screenshot stream }
             studio { name image_path }
             performers { id name image_path }

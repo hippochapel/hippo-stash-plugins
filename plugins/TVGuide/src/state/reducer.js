@@ -8,6 +8,7 @@
  */
 
 import { Events, Effects, STORAGE_KEYS } from './actions.js';
+import { mergeSceneMetadata } from '../api/sceneMetadata.js';
 import { ALL_SCENES_CHANNEL_ID } from '../domain/allScenes.js';
 import { createInitialState, PoolStatus } from './initialState.js';
 import { buildDaySchedule, dayBucket, programAt } from '../domain/schedule.js';
@@ -161,6 +162,7 @@ export function reduce(state, event) {
             const next = {
                 ...state,
                 open: true,
+                guideScrollChannelId: state.layout === 'list' ? null : state.guideScrollChannelId,
                 nowMs: event.nowMs,
                 dayKey: key,
                 dayStartMs: startMs,
@@ -289,7 +291,7 @@ export function reduce(state, event) {
                 : (next.tunedChannelId || next.channels[0]?.id || null);
             if (restoredChannelIsVisible) {
                 next.focus = { channelId: restoredChannelId, timeMs: state.nowMs };
-                next.guideScrollChannelId = restoredChannelId;
+                next.guideScrollChannelId = state.layout === 'list' ? null : restoredChannelId;
             } else if (!next.focus && next.channels.length > 0) {
                 next.focus = { channelId: next.channels[0].id, timeMs: state.nowMs };
             }
@@ -343,12 +345,13 @@ export function reduce(state, event) {
         }
 
         case Events.POOL_LOADED: {
-            const schedule = buildDaySchedule(event.channelId, event.scenes, state.dayKey);
+            const scenes = event.scenes.map((scene) => mergeSceneMetadata(scene, state.sceneMetadata[scene.id]));
+            const schedule = buildDaySchedule(event.channelId, scenes, state.dayKey);
             const next = {
                 ...state,
                 pools: {
                     ...state.pools,
-                    [event.channelId]: { status: PoolStatus.READY, scenes: event.scenes, error: null }
+                    [event.channelId]: { status: PoolStatus.READY, scenes, error: null }
                 },
                 schedules: { ...state.schedules, [event.channelId]: schedule }
             };
@@ -363,14 +366,41 @@ export function reduce(state, event) {
             return { state: next, effects };
         }
 
+        case Events.SCENE_METADATA_UPDATED: {
+            const metadata = { ...state.sceneMetadata };
+            let changed = false;
+            for (const patch of event.scenes) {
+                const previous = metadata[patch.id] || { id: patch.id };
+                metadata[patch.id] = mergeSceneMetadata(previous, patch);
+                if (metadata[patch.id] !== previous) changed = true;
+            }
+            if (!changed) return { state, effects };
+            const merge = (scene) => mergeSceneMetadata(scene, metadata[scene.id]);
+            const pools = { ...state.pools };
+            const schedules = { ...state.schedules };
+            for (const [id, pool] of Object.entries(pools)) {
+                const scenes = pool.scenes.map(merge);
+                if (scenes.some((scene, i) => scene !== pool.scenes[i])) pools[id] = { ...pool, scenes };
+            }
+            for (const [id, schedule] of Object.entries(schedules)) {
+                const entries = schedule.entries.map((entry) => {
+                    const scene = merge(entry.scene);
+                    return scene === entry.scene ? entry : { ...entry, scene };
+                });
+                if (entries.some((entry, i) => entry !== schedule.entries[i])) schedules[id] = { ...schedule, entries };
+            }
+            return { state: { ...state, sceneMetadata: metadata, pools, schedules }, effects };
+        }
+
         case Events.SCENE_DETAILS_LOADED: {
             const channelId = ALL_SCENES_CHANNEL_ID;
             const pool = state.pools[channelId];
             const schedule = state.schedules[channelId];
             if (!pool || !schedule) return { state, effects };
             const before = liveProgram(state, channelId, state.nowMs);
+            const details = mergeSceneMetadata(event.scene, state.sceneMetadata[event.scene.id]);
             const merge = (scene) => scene.id === event.scene.id
-                ? { ...scene, ...event.scene, files: scene.files, _summary: false } : scene;
+                ? { ...scene, ...details, files: scene.files, _summary: false } : scene;
             const next = {
                 ...state,
                 pools: { ...state.pools, [channelId]: { ...pool, scenes: pool.scenes.map(merge) } },

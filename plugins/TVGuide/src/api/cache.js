@@ -1,27 +1,45 @@
 /**
  * Session-scoped cache for scene pools.
  *
- * Pools are the expensive part of opening the guide, and they do not change
- * within a session in any way that matters. Keyed by day as well as channel so
+ * Pools are the expensive part of opening the guide. Keyed by day and channel so
  * a cache entry cannot outlive the broadcast day it was fetched for.
  *
  * Storage is optional: private-mode browsers and quota exhaustion both throw,
  * and a cache that cannot store is only ever a performance loss.
  */
 
+import { mergeSceneMetadata } from './sceneMetadata.js';
+
 const PREFIX = 'tvguide:pool';
+const METADATA_KEY = 'tvguide:scene-metadata:v1';
 
 export function createPoolCache({ storage } = {}) {
     const store = storage === undefined ? safeSessionStorage() : storage;
 
     const keyFor = (channelId, dayKey) => `${PREFIX}:${channelId}:${dayKey}`;
+    let metadata = {};
+    try { metadata = JSON.parse(store?.getItem(METADATA_KEY) || '{}') || {}; } catch { /* optional */ }
 
     return {
+        getMetadata() { return metadata; },
+
+        updateMetadata(scenes) {
+            let changed = false;
+            for (const patch of scenes) {
+                const previous = metadata[patch.id] || { id: patch.id };
+                const next = mergeSceneMetadata(previous, patch);
+                if (next !== previous) { metadata = { ...metadata, [patch.id]: next }; changed = true; }
+            }
+            if (changed) {
+                try { store?.setItem(METADATA_KEY, JSON.stringify(metadata)); } catch { /* memory still works */ }
+            }
+        },
+
         get(channelId, dayKey) {
             if (!store) return null;
             try {
                 const raw = store.getItem(keyFor(channelId, dayKey));
-                return raw ? JSON.parse(raw) : null;
+                return raw ? JSON.parse(raw).map((scene) => mergeSceneMetadata(scene, metadata[scene.id])) : null;
             } catch (e) {
                 return null;
             }

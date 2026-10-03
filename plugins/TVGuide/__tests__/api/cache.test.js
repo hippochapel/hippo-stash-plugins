@@ -19,6 +19,18 @@ function memoryStorage(overrides = {}) {
 const scenes = [{ id: '1' }, { id: '2' }];
 
 describe('createPoolCache', () => {
+    it('keeps edited metadata across reloads without rewriting or refetching scene pools', () => {
+        const storage = memoryStorage();
+        const cache = createPoolCache({ storage });
+        const scenes = [{ id: '1', title: 'Before', files: [{ duration: 1800 }] }];
+        cache.set('studio:1', 'day', scenes);
+        cache.updateMetadata([{ id: '1', title: 'After' }]);
+        expect(JSON.parse(storage.getItem('tvguide:pool:studio:1:day'))).toEqual(scenes);
+        const reloaded = createPoolCache({ storage });
+        expect(reloaded.get('studio:1', 'day')).toEqual([{ ...scenes[0], title: 'After' }]);
+        expect(reloaded.getMetadata()).toEqual({ '1': { id: '1', title: 'After' } });
+    });
+
     it('round-trips a pool', () => {
         const cache = createPoolCache({ storage: memoryStorage() });
         cache.set('studio:1', '2026-08-22', scenes);

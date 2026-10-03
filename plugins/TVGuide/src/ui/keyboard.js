@@ -110,6 +110,8 @@ export function createKeyboardHandler({ store, onClose, onHelp }) {
 
         const intent = mapKey(event);
         if (!intent) return;
+        // Let the disclosure button retain native Enter/Space activation.
+        if (event.target?.closest?.('.tvguide-show-more') && ['Enter', ' ', 'Spacebar'].includes(event.key)) return;
 
         // While the manager is open it owns the keyboard: it is full of text
         // fields, and guide shortcuts would fight them. Escape steps back out.

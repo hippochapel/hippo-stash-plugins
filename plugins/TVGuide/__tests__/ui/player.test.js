@@ -72,6 +72,13 @@ afterEach(() => {
 });
 
 describe('controls', () => {
+    it('hides theater mode on mobile, including a saved theater preference', () => {
+        const { store, player } = mount({ playerMode: 'theater', layout: 'list' });
+        expect(q(player, '.tvguide-theater').hidden).toBe(true);
+        expect(q(player, '.tvguide-fullscreen').hidden).toBe(false);
+        store.dispatch({ type: Events.LAYOUT_CHANGED, layout: 'grid' });
+        expect(q(player, '.tvguide-theater').hidden).toBe(false);
+    });
     it('puts the controls over the video rather than beside it', () => {
         const { player } = mount();
         const stage = q(player, '.tvguide-player-stage');

@@ -568,7 +568,7 @@ export function createPlayer({ store, viewer }) {
         if (!state.open || state.playerMode !== 'fullscreen') surfTransition.cancel();
         syncVisibility(state);
         renderChannelInfo(state);
-        const signature = `${state.viewerPaused}:${state.muted}:${state.playerMode}`;
+        const signature = `${state.viewerPaused}:${state.muted}:${state.playerMode}:${state.layout}`;
         if (renderedControls === signature) return;
         renderedControls = signature;
         setControlIcon(playPause, state.viewerPaused ? 'play' : 'pause');
@@ -580,7 +580,7 @@ export function createPlayer({ store, viewer }) {
         mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
 
         setControlIcon(theater, 'theater');
-        theater.hidden = state.playerMode === 'fullscreen';
+        theater.hidden = state.layout === 'list' || state.playerMode === 'fullscreen';
         theater.setAttribute('aria-label', 'Theater mode');
         theater.setAttribute('aria-pressed', state.playerMode === 'theater' ? 'true' : 'false');
 

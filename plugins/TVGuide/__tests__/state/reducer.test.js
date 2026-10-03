@@ -27,6 +27,30 @@ const channel = (id, name = id) => ({
     sceneFilter: { studios: { value: [id], modifier: 'INCLUDES' } }
 });
 
+describe('scene metadata edits', () => {
+    it('updates every loaded appearance without rebuilding schedules or retuning playback', () => {
+        const initial = readyState();
+        initial.pools['studio:2'] = initial.pools['studio:1'];
+        initial.schedules['studio:2'] = initial.schedules['studio:1'];
+        const event = { type: Events.SCENE_METADATA_UPDATED, scenes: [{ id: 's1', title: 'Updated', details: '', tags: [] }] };
+        const { state, effects } = reduce(initial, event);
+        expect(effects).toEqual([]);
+        for (const id of ['studio:1', 'studio:2']) {
+            expect(state.pools[id].scenes.find((s) => s.id === 's1').title).toBe('Updated');
+            expect(state.schedules[id].entries.map((e) => [e.offsetMs, e.durationMs])).toEqual(initial.schedules[id].entries.map((e) => [e.offsetMs, e.durationMs]));
+            expect(state.schedules[id].entries.find((e) => e.scene.id === 's1').scene.title).toBe('Updated');
+        }
+        expect(reduce(state, event).state).toBe(state);
+    });
+
+    it('keeps an edit when an older in-flight pool response arrives afterwards', () => {
+        const initial = readyState();
+        const updated = reduce(initial, { type: Events.SCENE_METADATA_UPDATED, scenes: [{ id: 's1', title: 'Updated' }] }).state;
+        const { state } = reduce(updated, { type: Events.POOL_LOADED, channelId: 'studio:2', scenes: scenes(4) });
+        expect(state.pools['studio:2'].scenes.find((s) => s.id === 's1').title).toBe('Updated');
+    });
+});
+
 /** A state with two channels loaded and a schedule for the first. */
 function readyState(overrides = {}) {
     const base = {
@@ -135,6 +159,28 @@ describe('temporary related channels', () => {
 });
 
 describe('RESTORE', () => {
+    it('restores playback on mobile without requesting a jump to the remembered channel', () => {
+        const initial = { ...createInitialState(), layout: 'list' };
+        const restored = run(initial, { type: Events.RESTORE, tunedChannelId: 'studio:2' }).state;
+        const opened = run(restored, { type: Events.OPEN, nowMs: NOON }).state;
+        const { state, effects } = run(opened, {
+            type: Events.CHANNELS_LOADED,
+            channels: [channel('studio:1', 'One'), channel('studio:2', 'Two')]
+        });
+        expect(state.tunedChannelId).toBe('studio:2');
+        expect(state.focus.channelId).toBe('studio:2');
+        expect(state.guideScrollChannelId).toBeNull();
+        expect(effects).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'fetchPool', channelId: 'studio:2' })]));
+    });
+
+    it('discards an old scroll request on mobile reopen while retaining explicit channel navigation', () => {
+        const initial = readyState({ open: false, layout: 'list', guideScrollChannelId: 'studio:1' });
+        const opened = run(initial, { type: Events.OPEN, nowMs: NOON }).state;
+        expect(opened.guideScrollChannelId).toBeNull();
+        const tuned = run(opened, { type: Events.TUNE, channelId: 'studio:2' }).state;
+        expect(tuned.guideScrollChannelId).toBe('studio:2');
+    });
+
     it('selects and scrolls to a remembered channel after the lineup loads', () => {
         const restored = run(createInitialState(), {
             type: Events.RESTORE,

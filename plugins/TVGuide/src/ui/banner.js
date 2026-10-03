@@ -17,6 +17,9 @@ import { openSource, sourceUrl } from './sourceLink.js';
 export function createBanner({ store } = {}) {
     const root = el('div', { class: 'tvguide-banner' });
     let renderedScrollKey = null;
+    let renderedScene = null;
+    let renderedSignature = null;
+    let expanded = false;
 
     function relatedSection(label, source, entities) {
         const unique = new Map();
@@ -118,6 +121,7 @@ export function createBanner({ store } = {}) {
 
             if (!program || !channel) {
                 renderedScrollKey = null;
+                renderedScene = null;
                 replaceChildren(
                     root,
                     el('p', { class: 'tvguide-banner-empty' },
@@ -130,6 +134,34 @@ export function createBanner({ store } = {}) {
             const group = sel.focusedPresentationGroup(state);
             const isLive = program.startMs <= state.nowMs && program.endMs > state.nowMs;
             const scrollKey = `${channel.id}:${scene.id}`;
+            if (scrollKey !== renderedScrollKey) expanded = false;
+            const meta = `${channel.name} · ${formatClock(program.startMs, state.settings.guide_12_hour_clock)}–${formatClock(program.endMs, state.settings.guide_12_hour_clock)}`
+                + ` · ${formatDuration(program.durationMs / 1000)}`
+                + (isLive ? ` · ${formatRemaining(program.endMs - state.nowMs)}` : '');
+            const signature = [scrollKey, channel.name, JSON.stringify(channel.logo), program.startMs, state.focus?.source, state.layout, isLive,
+                state.settings.guide_12_hour_clock, sel.temporaryChannelSaveState(state),
+                group?.programs.map((p) => p.scene.id).join(',')].join(':');
+            if (renderedScene === scene && renderedSignature === signature) {
+                const label = root.querySelector('.tvguide-banner-meta');
+                if (label.textContent !== meta) label.textContent = meta;
+                return;
+            }
+            const mobile = state.layout === 'list';
+            const extra = el('div', { class: 'tvguide-banner-extra', id: 'tvguide-banner-extra', hidden: mobile && !expanded },
+                featuringSection(group),
+                scene.details ? el('p', { class: 'tvguide-banner-details' }, scene.details) : null,
+                relatedSection('Models', 'performer', scene.performers),
+                relatedSection('Tags', 'tag', scene.tags));
+            const more = el('button', {
+                class: 'tvguide-show-more', type: 'button', hidden: !mobile || !extra.childElementCount,
+                'aria-expanded': String(expanded), 'aria-controls': 'tvguide-banner-extra',
+                onclick: () => {
+                    expanded = !expanded;
+                    extra.hidden = !expanded;
+                    more.textContent = expanded ? 'Show less' : 'Show more';
+                    more.setAttribute('aria-expanded', String(expanded));
+                }
+            }, expanded ? 'Show less' : 'Show more');
             const previousBody = root.querySelector('.tvguide-banner-body');
             const scrollTop = renderedScrollKey === scrollKey ? previousBody?.scrollTop || 0 : 0;
 
@@ -165,16 +197,10 @@ export function createBanner({ store } = {}) {
                     el(
                         'p',
                         { class: 'tvguide-banner-meta' },
-                        `${channel.name} · ${formatClock(program.startMs, state.settings.guide_12_hour_clock)}–${formatClock(program.endMs, state.settings.guide_12_hour_clock)}`,
-                        ` · ${formatDuration(program.durationMs / 1000)}`,
-                        isLive ? ` · ${formatRemaining(program.endMs - state.nowMs)}` : ''
+                        meta
                     ),
-                    featuringSection(group),
-                    scene.details
-                        ? el('p', { class: 'tvguide-banner-details' }, scene.details)
-                        : null,
-                    relatedSection('Models', 'performer', scene.performers),
-                    relatedSection('Tags', 'tag', scene.tags),
+                    more,
+                    extra,
                     sel.temporaryChannelSaveState(state)
                         ? el(
                               'button',
@@ -191,6 +217,8 @@ export function createBanner({ store } = {}) {
             );
             root.querySelector('.tvguide-banner-body').scrollTop = scrollTop;
             renderedScrollKey = scrollKey;
+            renderedScene = scene;
+            renderedSignature = signature;
         }
     };
 }

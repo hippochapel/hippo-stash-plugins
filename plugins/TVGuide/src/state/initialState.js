@@ -40,6 +40,7 @@ export function createInitialState() {
 
         // channelId -> { status, scenes, error }
         pools: {},
+        sceneMetadata: {},
         // channelId -> daySchedule, rebuilt when the broadcast day rolls over
         schedules: {},
         temporaryChannel: null,

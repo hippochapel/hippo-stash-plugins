@@ -138,7 +138,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
         type: 'button',
         text: 'Top',
         'aria-label': 'Scroll to the top of the channel list',
-        onclick: () => { list.element.scrollTop = 0; }
+        onclick: () => { root.scrollTop = 0; }
     });
 
     const helpPanel = el(
@@ -154,6 +154,13 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             ])
         )
     );
+
+    const closeButton = el('button', {
+        class: 'tvguide-close',
+        type: 'button',
+        'aria-label': 'Close TV Guide',
+        onclick: () => close()
+    }, ICONS.close());
 
     const toolbarRight = el(
         'div',
@@ -181,12 +188,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             onclick: () => store.dispatch({ type: Events.MANAGER_OPEN })
         }),
         status,
-        el('button', {
-            class: 'tvguide-close',
-            type: 'button',
-            'aria-label': 'Close TV Guide',
-            onclick: () => close()
-        }, ICONS.close())
+        closeButton
     );
 
     const topbar = el(
@@ -297,7 +299,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             const guideScrollTop = modeChanged ? guideScroller.scrollTop : null;
             if (modeChanged && renderedMode) modeScrollPositions.set(renderedMode, root.scrollTop);
             renderedMode = state.playerMode;
-            root.classList.toggle('is-theater', state.playerMode === 'theater');
+            root.classList.toggle('is-theater', state.layout !== 'list' && state.playerMode === 'theater');
             root.classList.toggle('has-player', Boolean(state.settings.guide_autoplay));
             // On the overlay, not the player: the header sizes itself from this
             // and custom properties only inherit downwards.
@@ -309,6 +311,8 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             if (mountedLayout !== state.layout) {
                 mountedLayout = state.layout;
                 replaceChildren(stage, view.element);
+                if (state.layout === 'list') topbar.insertBefore(closeButton, toolbarRight);
+                else toolbarRight.appendChild(closeButton);
             }
 
             timeControls.hidden = !sel.isGridLayout(state);
@@ -330,7 +334,7 @@ export function createOverlay({ store, viewer, announcer, touchGuard, onRowVisib
             }
             manager.render(state);
             player.render(state);
-            if (modeChanged) {
+            if (modeChanged && state.layout !== 'list') {
                 // Restore after layout updates, which can clamp scroll offsets.
                 // The channel position is shared; each mode remembers its own
                 // outer position so returning to theater does not jump to video.

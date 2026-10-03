@@ -18,9 +18,9 @@ const textRules = (channel) => [
     ['.tvguide-related[data-source="performer"] .tvguide-related-chip', (text) => alias('Person', text)],
     ['.tvguide-related[data-source="tag"] .tvguide-related-chip', (text) => alias('Tag', text)],
     ['.tvguide-channel-info-name', (text) => text.replace(/^(CH \d+ · )([\s\S]*)$/, (_, prefix, name) => prefix + channel(name))],
-    // These elements have separate text nodes for names and clock/count labels.
-    ['.tvguide-banner-meta', (text) => text.replace(/^([\s\S]*)( · \d{1,2}:\d{2}[\s\S]*)$/, (_, name, times) => channel(name) + times)],
-    ['.tvguide-list-times', (text) => text.replace(/^( · Next \d{1,2}:\d{2}(?: [AP]M)?: )([\s\S]*)$/, (_, prefix, title) => prefix + program(title))],
+    // Preserve clocks whether a renderer uses one text node or several.
+    ['.tvguide-banner-meta', (text) => text.replace(/^([\s\S]*?)( · \d{1,2}:\d{2}[\s\S]*)$/, (_, name, times) => channel(name) + times)],
+    ['.tvguide-list-times', (text) => text.replace(/^([\s\S]*? · Next \d{1,2}:\d{2}(?: [AP]M)?: )([\s\S]*)$/, (_, prefix, title) => prefix + program(title))],
     ['.tvguide-manager-row-meta', (text) => text.endsWith(' · ') ? channel(text.slice(0, -3)) + ' · ' : text],
     ['.tvguide-banner-empty', (text) => text.endsWith(' has nothing scheduled.') ? 'Channel has nothing scheduled.' : text]
 ];
