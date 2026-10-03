@@ -1,10 +1,10 @@
 /* Match SFW Switch's media/text blur strengths. Never filter the player stage:
    fullscreen ownership, playback controls, and resize handles must stay intact. */
-.tvguide-sfw :is(img, video, canvas) {
+.tvguide-sfw:not(.tvguide-demo) :is(img, video, canvas) {
     filter: blur(30px) !important;
 }
 
-.tvguide-sfw :is(
+.tvguide-sfw:not(.tvguide-demo) :is(
     .tvguide-block-title, .tvguide-row-name, .tvguide-logo-name,
     .tvguide-logo-monogram, .tvguide-banner-logo-name,
     .tvguide-banner-title, .tvguide-banner-meta, .tvguide-banner-details,
@@ -18,7 +18,7 @@
     filter: blur(2px) !important;
 }
 
-.tvguide-sfw:not(.tvguide-sfw-locked) :is(
+.tvguide-sfw:not(.tvguide-demo):not(.tvguide-sfw-locked) :is(
     img, video, canvas,
     .tvguide-block-title, .tvguide-row-name, .tvguide-logo-name,
     .tvguide-logo-monogram, .tvguide-banner-logo-name,

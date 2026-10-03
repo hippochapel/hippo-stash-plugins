@@ -8,6 +8,10 @@ ui:
   css:
     - tvguide.css
 settings:
+  guide_sfw_text:
+    displayName: "Demo Mode (SFW)"
+    description: "Show fictional text and neutral artwork, hide video and mute audio while preserving TV Guide's layout. Independent of SFW Switch. Masks searches and disables name/logo editing and links to real content. Disabled by default. Reload the page after changing this setting."
+    type: BOOLEAN
   guide_channel_info:
     displayName: Show Channel Info Overlay
     description: "Show channel and scene information in fullscreen. Enabled by default. Disable to hide the overlay while keeping playback controls. Reload the page after changing this setting."

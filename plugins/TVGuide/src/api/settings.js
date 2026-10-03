@@ -21,7 +21,8 @@ export const DEFAULT_SETTINGS = {
     guide_autoplay: true,
     guide_start_muted: true,
     guide_navbar_button: true,
-    guide_channel_info: true
+    guide_channel_info: true,
+    guide_sfw_text: false
 };
 
 /** Bounds keep a mistyped setting from producing an unusable guide. */

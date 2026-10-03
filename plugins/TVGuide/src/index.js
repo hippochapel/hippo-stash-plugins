@@ -7,6 +7,7 @@
 
 import './styles/index.css';
 import './styles/sfwSwitch.css';
+import './styles/demo.css';
 
 import { createClient } from './api/client.js';
 import { fetchSceneStreams } from './api/scenes.js';
@@ -29,6 +30,8 @@ import { createViewer } from './ui/viewer.js';
 import { createOverlay, HASH } from './ui/overlay.js';
 import { createNavbarButton } from './ui/navbarButton.js';
 import { watchSfwSwitch } from './ui/sfwSwitch.js';
+import { createSfwText } from './ui/sfwText.js';
+import { withDemoPlayback } from './ui/demoContent.js';
 import { createTouchGuard } from './ui/gestures.js';
 import { watchLayout } from './ui/layoutWatcher.js';
 import { createKeyboardHandler } from './ui/keyboard.js';
@@ -88,7 +91,10 @@ export function start() {
     const gql = createClient();
     const cache = createPoolCache();
     const announcer = createAnnouncer();
-    const viewer = createViewer({ getStreams: (id) => fetchSceneStreams(gql, id) });
+    const viewer = withDemoPlayback(
+        createViewer({ getStreams: (id) => fetchSceneStreams(gql, id) }),
+        () => store.getState()
+    );
     const touchGuard = createTouchGuard();
     let storage = null;
 
@@ -120,7 +126,11 @@ export function start() {
 
     overlayRef = overlay;
     const stopSfwSwitch = watchSfwSwitch({ root: overlay.element, video: viewer.element, store });
-    store.subscribe((state) => overlay.render(state));
+    const sfwText = createSfwText({ root: overlay.element, getState: store.getState });
+    store.subscribe((state) => {
+        overlay.render(state);
+        sfwText.refresh();
+    });
     const stopLazySceneDetails = createLazySceneDetails({ store, gql });
 
     const navbar = createNavbarButton({ onActivate: () => overlay.open() });
@@ -205,6 +215,7 @@ export function start() {
 
     return function stop() {
         stopSfwSwitch();
+        sfwText.destroy();
         stopLazySceneDetails();
         clearInterval(ticker);
         stopLayoutWatch();

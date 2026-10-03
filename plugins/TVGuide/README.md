@@ -50,6 +50,18 @@ also applies in the guide and fullscreen player. Playback controls stay readable
 SFW Switch handles its optional audio muting; TV Guide reflects the actual mute
 state without overwriting your saved mute preference.
 
+The separate **Demo Mode (SFW)** plugin setting presents the guide with fictional
+titles, descriptions and names, geometric artwork and a silent **Demo preview**
+panel over the video. Sample content is generated locally and stays consistent
+across views and reloads. Studio logos become fictional wordmarks with matching
+studio names in the guide, details and player. Real media stays hidden on hover and in fullscreen;
+times, progress, channel surfing and layout remain intact. SFW Switch is not
+required. Search input is masked and still searches real names. Name/logo editing,
+unmuting and links to real content are disabled in the guide while demo mode is on.
+Reload after changing the setting. The existing `guide_sfw_text` setting key is
+retained. This presentation filter does not change library data or saved metadata,
+and only applies inside TV Guide; the surrounding Stash interface is unchanged.
+
 A list of source entries — studios, **models** (performers), tags, groups and
 saved filters mix freely in one guide. The Special section contains five
 individual channels, which are explicit picks just like any other channel:
